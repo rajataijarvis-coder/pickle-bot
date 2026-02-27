@@ -1,12 +1,20 @@
 """Tests for webread tool."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from picklebot.tools.webread_tool import create_webread_tool
 from picklebot.provider.web_read.base import ReadResult
 from picklebot.core.context import SharedContext
 from picklebot.utils.config import Crawl4AIWebReadConfig
+
+
+def _make_mock_session():
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session"
+    mock_session.agent_id = "test-agent"
+    return mock_session
 
 
 class TestCreateWebreadTool:
@@ -51,7 +59,8 @@ class TestWebreadToolExecution:
             mock_from_config.return_value = mock_provider
 
             tool = create_webread_tool(context)
-            result = await tool.execute(url="https://example.com")
+            mock_session = _make_mock_session()
+            result = await tool.execute(session=mock_session, url="https://example.com")
 
         assert "Example Page" in result
         assert "# Example" in result
@@ -78,7 +87,8 @@ class TestWebreadToolExecution:
             mock_from_config.return_value = mock_provider
 
             tool = create_webread_tool(context)
-            result = await tool.execute(url="https://example.com")
+            mock_session = _make_mock_session()
+            result = await tool.execute(session=mock_session, url="https://example.com")
 
         assert "Error reading" in result
         assert "Failed to load page" in result

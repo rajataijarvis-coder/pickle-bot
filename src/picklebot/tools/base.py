@@ -16,13 +16,11 @@ class BaseTool(ABC):
     parameters: dict[str, Any]  # JSON Schema for function calling
 
     @abstractmethod
-    async def execute(
-        self, session: "AgentSession | None" = None, **kwargs: Any
-    ) -> str:
+    async def execute(self, session: "AgentSession", **kwargs: Any) -> str:
         """Execute the tool.
 
         Args:
-            session: The agent session context (optional)
+            session: The agent session context
             **kwargs: Tool-specific arguments
         """
 
@@ -62,16 +60,13 @@ class FunctionTool(BaseTool):
         self.parameters = parameters
         self._func = func
 
-    async def execute(
-        self, session: "AgentSession | None" = None, **kwargs: Any
-    ) -> str:
+    async def execute(self, session: "AgentSession", **kwargs: Any) -> str:
         """Execute the underlying function.
 
         Args:
-            session: The agent session context (optional)
+            session: The agent session context
             **kwargs: Tool-specific arguments
         """
-        # Pass session if the function accepts it
         import inspect
 
         sig = inspect.signature(self._func)

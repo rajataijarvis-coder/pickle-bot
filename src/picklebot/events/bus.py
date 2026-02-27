@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 Handler = Callable[[Event], Awaitable[None]]
 
-
 class EventBus:
     """Central event bus with subscription support."""
 
@@ -21,13 +20,7 @@ class EventBus:
         self._subscribers: dict[EventType, list[Handler]] = defaultdict(list)
         self.events_dir = events_dir or Path.home() / ".events"
         self.pending_dir = self.events_dir / "pending"
-        self.failed_dir = self.events_dir / "failed"
-        self._ensure_dirs()
-
-    def _ensure_dirs(self) -> None:
-        """Ensure persistence directories exist."""
         self.pending_dir.mkdir(parents=True, exist_ok=True)
-        self.failed_dir.mkdir(parents=True, exist_ok=True)
 
     def subscribe(self, event_type: EventType, handler: Handler) -> None:
         """Subscribe a handler to an event type."""
@@ -43,10 +36,8 @@ class EventBus:
 
     async def publish(self, event: Event) -> None:
         """Publish an event: persist if OUTBOUND, then notify subscribers."""
-        # Persist first (blocking, for OUTBOUND only)
-        await self._persist(event)
 
-        # Then notify subscribers (non-blocking)
+        await self._persist_inbound(event)
         await self._notify_subscribers(event)
 
         logger.debug(f"Published {event.type.value} event from {event.source}")
@@ -57,18 +48,14 @@ class EventBus:
         if not handlers:
             return
 
-        # Fire all handlers concurrently and wait for completion
-        tasks = []
-        for handler in handlers:
-            tasks.append(handler(event))
+        tasks = [handler(event) for handler in handlers]
 
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Error in event handler: {result}")
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Error in event handler: {result}")
 
-    async def _persist(self, event: Event) -> None:
+    async def _persist_inbound(self, event: Event) -> None:
         """Persist event to disk (only OUTBOUND events)."""
         if event.type != EventType.OUTBOUND:
             return

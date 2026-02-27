@@ -53,7 +53,7 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             "required": ["content"],
         },
     )
-    async def post_message(content: str, session: "AgentSession | None" = None) -> str:
+    async def post_message(content: str, session: "AgentSession") -> str:
         """
         Send a message to the default user on the default platform.
 
@@ -65,21 +65,12 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             Success or error message
         """
         try:
-            # Use session info if available, otherwise use defaults for proactive messages
-            if session:
-                session_id = session.session_id
-                source = Source.agent(session.agent_id)
-            else:
-                # Fallback for calls without session (shouldn't happen in normal flow)
-                session_id = "proactive"
-                source = Source.pickle()
-
             # Publish OUTBOUND event for the DeliveryWorker to handle
             event = Event(
                 type=EventType.OUTBOUND,
-                session_id=session_id,
+                session_id=session.session_id,
                 content=content,
-                source=source,
+                source=Source.agent(session.agent_id),
                 timestamp=time.time(),
                 metadata={"platform": default_platform},
             )

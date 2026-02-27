@@ -1,12 +1,20 @@
 """Tests for websearch tool."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from picklebot.tools.websearch_tool import create_websearch_tool
 from picklebot.provider.web_search.base import SearchResult
 from picklebot.core.context import SharedContext
 from picklebot.utils.config import BraveWebSearchConfig
+
+
+def _make_mock_session():
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session"
+    mock_session.agent_id = "test-agent"
+    return mock_session
 
 
 class TestCreateWebsearchTool:
@@ -58,7 +66,8 @@ class TestWebsearchToolExecution:
             mock_from_config.return_value = mock_provider
 
             tool = create_websearch_tool(context)
-            result = await tool.execute(query="test query")
+            mock_session = _make_mock_session()
+            result = await tool.execute(session=mock_session, query="test query")
 
         assert "Example" in result
         assert "https://example.com" in result
@@ -79,6 +88,7 @@ class TestWebsearchToolExecution:
             mock_from_config.return_value = mock_provider
 
             tool = create_websearch_tool(context)
-            result = await tool.execute(query="test query")
+            mock_session = _make_mock_session()
+            result = await tool.execute(session=mock_session, query="test query")
 
         assert result == "No results found."

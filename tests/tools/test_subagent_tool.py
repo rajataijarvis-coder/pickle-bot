@@ -10,6 +10,14 @@ from picklebot.core.context import SharedContext
 from picklebot.tools.subagent_tool import create_subagent_dispatch_tool
 
 
+def _make_mock_session():
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session"
+    mock_session.agent_id = "test-agent"
+    return mock_session
+
+
 class TestCreateSubagentDispatchTool:
     """Tests for create_subagent_dispatch_tool factory function."""
 
@@ -127,7 +135,8 @@ You are the target agent.
         asyncio.create_task(resolve_future())
 
         # Execute
-        result = await tool_func.execute(agent_id="target-agent", task="Do something")
+        mock_session = _make_mock_session()
+        result = await tool_func.execute(session=mock_session, agent_id="target-agent", task="Do something")
 
         # Verify
         parsed = json.loads(result)
@@ -169,7 +178,9 @@ You are the target agent.
         asyncio.create_task(capture_and_resolve())
 
         # Execute with context
+        mock_session = _make_mock_session()
         await tool_func.execute(
+            session=mock_session,
             agent_id="target-agent",
             task="Review this",
             context="The code is in src/main.py",
@@ -223,7 +234,8 @@ You are the target agent.
 
         asyncio.create_task(resolve_future())
 
-        result = await tool_func.execute(agent_id="target-agent", task="do something")
+        mock_session = _make_mock_session()
+        result = await tool_func.execute(session=mock_session, agent_id="target-agent", task="do something")
         assert "task completed" in result
         assert "test-session" in result
 
@@ -246,7 +258,9 @@ You are the target agent.
 
         asyncio.create_task(capture_and_resolve())
 
+        mock_session = _make_mock_session()
         await tool_func.execute(
+            session=mock_session,
             agent_id="target-agent",
             task="test task",
             context="some context",

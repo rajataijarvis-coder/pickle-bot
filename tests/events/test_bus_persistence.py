@@ -22,7 +22,6 @@ def event_bus(temp_events_dir):
 def test_event_bus_has_persistence_dir(event_bus, temp_events_dir):
     assert event_bus.events_dir == temp_events_dir
     assert event_bus.pending_dir == temp_events_dir / "pending"
-    assert event_bus.failed_dir == temp_events_dir / "failed"
 
 
 @pytest.mark.asyncio

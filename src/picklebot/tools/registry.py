@@ -38,14 +38,14 @@ class ToolRegistry:
         return [tool.get_tool_schema() for tool in self._tools.values()]
 
     async def execute_tool(
-        self, name: str, session: "AgentSession | None" = None, **kwargs: Any
+        self, name: str, session: "AgentSession", **kwargs: Any
     ) -> str:
         """
         Execute a tool by name.
 
         Args:
             name: Name of the tool to execute
-            session: The agent session context (optional)
+            session: The agent session context
             **kwargs: Tool-specific arguments
 
         Raises:

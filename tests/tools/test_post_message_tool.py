@@ -1,7 +1,7 @@
 """Tests for post_message tool factory."""
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
 from picklebot.tools.post_message_tool import create_post_message_tool
@@ -60,6 +60,14 @@ You are a test assistant.
     return SharedContext(config)
 
 
+def _make_mock_session(session_id: str = "test-session-123", agent_id: str = "test-agent"):
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = session_id
+    mock_session.agent_id = agent_id
+    return mock_session
+
+
 class TestCreatePostMessageTool:
     """Tests for create_post_message_tool factory function."""
 
@@ -85,8 +93,8 @@ class TestPostMessageToolExecution:
     """Tests for post_message tool execution."""
 
     @pytest.mark.anyio
-    async def test_publishes_outbound_event(self):
-        """Should publish OUTBOUND event to eventbus instead of calling bus.post()."""
+    async def test_uses_session_for_event(self):
+        """Should use session info for session_id and source."""
         context = _make_context_with_messagebus(
             enabled=True, default_platform="telegram"
         )
@@ -95,49 +103,7 @@ class TestPostMessageToolExecution:
         original_publish = context.eventbus.publish
         context.eventbus.publish = AsyncMock()
 
-        tool = create_post_message_tool(context)
-        assert tool is not None
-
-        result = await tool.execute(content="Hello from agent!")
-
-        # Verify publish was called
-        context.eventbus.publish.assert_called_once()
-        call_args = context.eventbus.publish.call_args
-        event = call_args[0][0]
-
-        # Verify event properties
-        assert isinstance(event, Event)
-        assert event.type == EventType.OUTBOUND
-        assert event.content == "Hello from agent!"
-        assert event.source == "pickle"  # Fallback source when no session
-        # session_id falls back to "proactive" when no session provided
-        assert event.session_id == "proactive"
-        assert event.metadata["platform"] == "telegram"
-
-        # Verify result message
-        assert "queued" in result.lower() or "success" in result.lower()
-
-        # Restore
-        context.eventbus.publish = original_publish
-
-    @pytest.mark.anyio
-    async def test_uses_session_when_provided(self):
-        """Should use session info for session_id and source when session is provided."""
-        from unittest.mock import MagicMock
-
-        context = _make_context_with_messagebus(
-            enabled=True, default_platform="telegram"
-        )
-
-        # Mock the eventbus.publish method
-        original_publish = context.eventbus.publish
-        context.eventbus.publish = AsyncMock()
-
-        # Create mock session
-        mock_session = MagicMock()
-        mock_session.session_id = "test-session-123"
-        mock_session.agent_id = "test-agent"
-
+        mock_session = _make_mock_session()
         tool = create_post_message_tool(context)
         assert tool is not None
 
@@ -149,9 +115,15 @@ class TestPostMessageToolExecution:
         event = call_args[0][0]
 
         # Verify event uses session info
+        assert isinstance(event, Event)
+        assert event.type == EventType.OUTBOUND
         assert event.session_id == "test-session-123"
         assert event.source == "agent:test-agent"
+        assert event.content == "Hello from agent!"
         assert event.metadata["platform"] == "telegram"
+
+        # Verify result message
+        assert "queued" in result.lower() or "success" in result.lower()
 
         # Restore
         context.eventbus.publish = original_publish
@@ -167,10 +139,11 @@ class TestPostMessageToolExecution:
         original_publish = context.eventbus.publish
         context.eventbus.publish = AsyncMock(side_effect=Exception("Test error"))
 
+        mock_session = _make_mock_session()
         tool = create_post_message_tool(context)
         assert tool is not None
 
-        result = await tool.execute(content="Hello from agent!")
+        result = await tool.execute(session=mock_session, content="Hello from agent!")
 
         # Verify error message
         assert "failed" in result.lower() or "error" in result.lower()
