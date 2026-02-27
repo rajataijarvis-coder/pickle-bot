@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class MessageBusWorker(Worker):
-    """Ingests messages from platforms, dispatches to agent queue."""
+    """Ingests messages from platforms, publishes INBOUND events to EventBus."""
 
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
