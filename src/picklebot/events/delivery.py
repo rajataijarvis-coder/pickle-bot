@@ -1,5 +1,6 @@
 # src/picklebot/events/delivery.py
 import logging
+import random
 from typing import TYPE_CHECKING, Any
 
 from .bus import EventBus
@@ -10,6 +11,32 @@ if TYPE_CHECKING:
     from picklebot.messagebus.base import MessageBus
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration
+BACKOFF_MS = [5000, 25000, 120000, 600000]  # 5s, 25s, 2min, 10min
+MAX_RETRIES = 5
+
+
+def compute_backoff_ms(retry_count: int) -> int:
+    """Compute backoff time with jitter.
+
+    Args:
+        retry_count: Current retry attempt (1-indexed)
+
+    Returns:
+        Backoff time in milliseconds
+    """
+    if retry_count <= 0:
+        return 0
+
+    # Cap at last backoff value
+    idx = min(retry_count - 1, len(BACKOFF_MS) - 1)
+    base = BACKOFF_MS[idx]
+
+    # Add +/- 20% jitter
+    jitter = random.randint(-base // 5, base // 5)
+    return max(0, base + jitter)
+
 
 # Platform message size limits
 PLATFORM_LIMITS: dict[str, float] = {
