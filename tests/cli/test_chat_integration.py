@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from picklebot.core.context import SharedContext
+from picklebot.events.types import Event, EventType
 from picklebot.messagebus.cli_bus import CliBus
 from picklebot.server.agent_worker import AgentDispatcherWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
@@ -48,13 +49,12 @@ You are a test assistant.
 @pytest.mark.asyncio
 async def test_cli_message_flow_through_workers(integration_config: Config):
     """
-    Test complete message flow from stdin through MessageBusWorker and AgentDispatcherWorker.
+    Test complete message flow from stdin through MessageBusWorker publishing events.
 
     This integration test verifies:
     1. CliBus receives input from mocked stdin
-    2. MessageBusWorker dispatches message to agent_queue
-    3. AgentDispatcherWorker picks up the job
-    4. SharedContext has agent_queue properly initialized
+    2. MessageBusWorker publishes INBOUND event to EventBus
+    3. Event has correct type, source, content, and metadata
     """
     # Create CliBus
     bus = CliBus()
@@ -62,29 +62,20 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
     # Create SharedContext with buses=[bus]
     context = SharedContext(config=integration_config, buses=[bus])
 
-    # Verify context has agent_queue (lazy initialization)
-    assert hasattr(context, "_agent_queue")
-    assert context._agent_queue is None  # Not yet initialized
+    # Verify context has eventbus
+    assert hasattr(context, "eventbus")
 
     # Create workers (uses default agent from config)
     messagebus_worker = MessageBusWorker(context)
     dispatcher_worker = AgentDispatcherWorker(context)
 
-    # Verify context now has agent_queue initialized via property access
-    _ = context.agent_queue
-    assert context._agent_queue is not None
-    assert isinstance(context._agent_queue, asyncio.Queue)
+    # Track published events
+    published_events: list[Event] = []
 
-    # Track if message was dispatched
-    message_dispatched = asyncio.Event()
-    original_put = context.agent_queue.put
+    async def capture_event(event: Event):
+        published_events.append(event)
 
-    async def tracked_put(job):
-        message_dispatched.set()
-        return await original_put(job)
-
-    # Patch the queue's put method to track dispatch
-    context.agent_queue.put = tracked_put
+    context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
     # Mock input to simulate user typing "test message" then "quit"
     with patch(
@@ -95,17 +86,20 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
         dispatcher_task = asyncio.create_task(dispatcher_worker.run())
 
         try:
-            # Wait for message to be dispatched (with timeout)
-            await asyncio.wait_for(message_dispatched.wait(), timeout=2.0)
+            # Wait for event to be published (with timeout)
+            await asyncio.wait_for(
+                asyncio.sleep(0.5), timeout=2.0
+            )  # Allow time for event processing
 
-            # Verify a job was added to the queue
-            assert not context.agent_queue.empty()
+            # Verify an INBOUND event was published
+            assert len(published_events) >= 1
+            event = published_events[0]
 
-            # Get the job to verify its structure
-            job = context.agent_queue.get_nowait()
-            assert job.message == "test message"
-            # Uses default agent from config
-            assert job.agent_id == "test-agent"
+            # Verify event structure
+            assert event.type == EventType.INBOUND
+            assert event.content == "test message"
+            assert event.source.startswith("cli:")
+            assert event.timestamp > 0
 
             # Wait a bit for bus to process quit command
             await asyncio.sleep(0.2)

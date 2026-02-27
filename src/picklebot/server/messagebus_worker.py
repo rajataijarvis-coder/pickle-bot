@@ -1,10 +1,12 @@
 """MessageBus worker for ingesting platform messages."""
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
-from picklebot.server.base import Worker, Job
+from picklebot.server.base import Worker
 from picklebot.core.agent import SessionMode, Agent
+from picklebot.events.types import Event, EventType
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
@@ -97,21 +99,35 @@ class MessageBusWorker(Worker):
                 user_id = context.user_id
                 session_id = self._get_or_create_session_id(platform, user_id)
 
-                block_on_response = bus.platform_name == "cli"
+                # Build source and metadata
+                source = f"{platform}:{user_id}"
+                metadata = self._extract_metadata(context)
 
-                job = Job(
+                # Publish INBOUND event
+                event = Event(
+                    type=EventType.INBOUND,
                     session_id=session_id,
-                    agent_id=self.agent_def.id,
-                    message=message,
-                    mode=SessionMode.CHAT,
+                    content=message,
+                    source=source,
+                    timestamp=time.time(),
+                    metadata=metadata,
                 )
-                await self.context.agent_queue.put(job)
-                self.logger.debug(f"Dispatched message from {platform}")
-
-                if block_on_response:
-                    await job.result_future
+                await self.context.eventbus.publish(event)
+                self.logger.debug(f"Published INBOUND event from {source}")
 
             except Exception as e:
                 self.logger.error(f"Error processing message from {platform}: {e}")
 
         return callback
+
+    def _extract_metadata(self, context: Any) -> dict[str, Any]:
+        """Extract platform-specific metadata from context."""
+        metadata = {}
+
+        # Extract common fields if they exist
+        if hasattr(context, "chat_id"):
+            metadata["chat_id"] = context.chat_id
+        if hasattr(context, "channel_id"):
+            metadata["channel_id"] = context.channel_id
+
+        return metadata

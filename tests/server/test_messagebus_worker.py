@@ -9,6 +9,7 @@ from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.messagebus.base import MessageContext
 from picklebot.core.commands import CommandRegistry
 from picklebot.core.context import SharedContext
+from picklebot.events.types import Event, EventType
 
 
 @dataclass
@@ -17,6 +18,14 @@ class FakeContext(MessageContext):
 
     user_id: str
     chat_id: str
+
+
+@dataclass
+class FakeDiscordContext(MessageContext):
+    """Fake context for Discord testing."""
+
+    user_id: str
+    channel_id: str
 
 
 class FakeBus:
@@ -67,6 +76,20 @@ class FakeTelegramBus(FakeBus):
         await callback("hello", FakeContext(user_id="123", chat_id="456"))
 
 
+class FakeDiscordBus(FakeBus):
+    """Fake bus that reports as discord platform."""
+
+    def __init__(self):
+        super().__init__()
+        self.platform_name = "discord"
+
+    async def run(self, callback):
+        self.started = True
+        self._callback = callback
+        # Simulate receiving a message with user context
+        await callback("hello", FakeDiscordContext(user_id="456", channel_id="789"))
+
+
 class BlockingBusWithUser(FakeBusWithUser):
     """Fake bus that blocks all messages."""
 
@@ -75,8 +98,8 @@ class BlockingBusWithUser(FakeBusWithUser):
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_dispatches_to_queue(test_context, tmp_path):
-    """MessageBusWorker dispatches incoming messages to agent queue."""
+async def test_messagebus_worker_publishes_inbound_event(test_context, tmp_path):
+    """MessageBusWorker publishes INBOUND events to EventBus."""
     # Create test agent
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
@@ -95,11 +118,17 @@ You are a test assistant.
     )
 
     bus = FakeBusWithUser()
+    published_events: list[Event] = []
+
+    async def capture_event(event: Event):
+        published_events.append(event)
 
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
         # Patch _get_or_create_session_id to return a known session ID for testing
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        # Subscribe to capture events
+        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
     # Start worker (it will process one message and wait)
     task = asyncio.create_task(worker.run())
@@ -112,12 +141,14 @@ You are a test assistant.
     except asyncio.CancelledError:
         pass
 
-    # Check queue has job (via context.agent_queue)
-    queue = test_context.agent_queue
-    assert not queue.empty()
-    job = await queue.get()
-    assert job.message == "hello"
-    assert job.session_id == "test-session-123"  # Session ID assigned per user
+    # Verify event was published
+    assert len(published_events) == 1
+    event = published_events[0]
+    assert event.type == EventType.INBOUND
+    assert event.content == "hello"
+    assert event.session_id == "test-session-123"
+    assert event.source == "fake:123"
+    assert event.metadata == {"chat_id": "456"}
 
 
 @pytest.mark.anyio
@@ -141,8 +172,14 @@ You are a test assistant.
     )
 
     bus = BlockingBusWithUser()
+    published_events: list[Event] = []
+
+    async def capture_event(event: Event):
+        published_events.append(event)
+
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
+        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
     task = asyncio.create_task(worker.run())
     await asyncio.sleep(0.1)
@@ -152,9 +189,8 @@ You are a test assistant.
     except asyncio.CancelledError:
         pass
 
-    # Queue should be empty - message was blocked
-    queue = test_context.agent_queue
-    assert queue.empty()
+    # No event should have been published - message was blocked
+    assert len(published_events) == 0
 
 
 @pytest.mark.anyio
@@ -220,8 +256,14 @@ You are a test assistant.
     )
 
     bus = FakeTelegramBus()
+    published_events: list[Event] = []
+
+    async def capture_event(event: Event):
+        published_events.append(event)
+
     with patch.object(test_context, "messagebus_buses", [bus]):
-        worker = MessageBusWorker(test_context)  # No queue param
+        worker = MessageBusWorker(test_context)
+        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
     # Start worker
     task = asyncio.create_task(worker.run())
@@ -234,16 +276,15 @@ You are a test assistant.
     except asyncio.CancelledError:
         pass
 
-    # Check queue has job with the existing session_id
-    queue = test_context.agent_queue
-    assert not queue.empty()
-    job = await queue.get()
-    assert job.session_id == "existing-session-uuid"
+    # Verify event has the existing session_id
+    assert len(published_events) == 1
+    event = published_events[0]
+    assert event.session_id == "existing-session-uuid"
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_uses_context_queue(test_context, tmp_path):
-    """MessageBusWorker should get queue from context."""
+async def test_messagebus_worker_includes_metadata(test_context, tmp_path):
+    """MessageBusWorker includes platform-specific metadata in events."""
     # Create test agent
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
@@ -261,15 +302,18 @@ You are a test assistant.
 """
     )
 
-    bus = FakeBusWithUser()
+    bus = FakeDiscordBus()
+    published_events: list[Event] = []
+
+    async def capture_event(event: Event):
+        published_events.append(event)
+
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Worker should use context's queue
-    assert worker.context.agent_queue is test_context.agent_queue
-
-    # Verify it dispatches to the context queue
+    # Start worker
     task = asyncio.create_task(worker.run())
     await asyncio.sleep(0.1)
     task.cancel()
@@ -278,11 +322,11 @@ You are a test assistant.
     except asyncio.CancelledError:
         pass
 
-    # Job should be in context's queue
-    queue = test_context.agent_queue
-    assert not queue.empty()
-    job = await queue.get()
-    assert job.message == "hello"
+    # Verify event has Discord metadata (channel_id, not chat_id)
+    assert len(published_events) == 1
+    event = published_events[0]
+    assert event.source == "discord:456"
+    assert event.metadata == {"channel_id": "789"}
 
 
 class TestMessageBusWorkerSlashCommands:
@@ -299,6 +343,9 @@ class TestMessageBusWorkerSlashCommands:
         context.config.messagebus.telegram = None
         context.config.messagebus.discord = None
         context.command_registry = CommandRegistry.with_builtins()
+        # Add eventbus mock
+        context.eventbus = MagicMock()
+        context.eventbus.publish = AsyncMock()
         return context
 
     def test_context_has_command_registry(self, mock_context):
@@ -314,7 +361,6 @@ class TestMessageBusWorkerSlashCommands:
     async def test_callback_handles_slash_command(self, mock_context):
         """Callback should dispatch slash commands and reply directly."""
         mock_context.messagebus_buses = []
-        mock_context.agent_queue = AsyncMock()
 
         worker = MessageBusWorker(mock_context)
 
@@ -341,8 +387,8 @@ class TestMessageBusWorkerSlashCommands:
         call_args = mock_bus.reply.call_args[0][0]
         assert "Available Commands" in call_args
 
-        # Should NOT have put job in queue
-        mock_context.agent_queue.put.assert_not_called()
+        # Should NOT have published an event
+        mock_context.eventbus.publish.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -374,3 +420,50 @@ You are a test assistant.
     # Worker should use the default agent from config
     assert worker.agent_def.id == "test"
     assert worker.agent_def.name == "Test Agent"
+
+
+@pytest.mark.anyio
+async def test_messagebus_worker_event_has_timestamp(test_context, tmp_path):
+    """MessageBusWorker events include timestamp."""
+    # Create test agent
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir(parents=True)
+    test_agent_dir = agents_dir / "test"
+    test_agent_dir.mkdir(parents=True)
+
+    agent_md = test_agent_dir / "AGENT.md"
+    agent_md.write_text(
+        """---
+name: Test Agent
+description: A test agent
+---
+
+You are a test assistant.
+"""
+    )
+
+    bus = FakeBusWithUser()
+    published_events: list[Event] = []
+
+    async def capture_event(event: Event):
+        published_events.append(event)
+
+    with patch.object(test_context, "messagebus_buses", [bus]):
+        worker = MessageBusWorker(test_context)
+        worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+
+    # Start worker
+    task = asyncio.create_task(worker.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # Verify event has timestamp
+    assert len(published_events) == 1
+    event = published_events[0]
+    assert event.timestamp > 0
+    assert isinstance(event.timestamp, float)
