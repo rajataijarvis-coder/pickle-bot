@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from picklebot.core.context import SharedContext
 from picklebot.core.history import HistoryMessage
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 from picklebot.provider.llm import LLMProvider
 from picklebot.tools.registry import ToolRegistry
 from picklebot.tools.skill_tool import create_skill_tool
@@ -247,7 +247,7 @@ class AgentSession:
             type=EventType.OUTBOUND,
             session_id=self.session_id,
             content=content,
-            source=f"agent:{self.agent_id}",
+            source=Source.agent(self.agent_id),
             timestamp=time.time(),
             metadata={"agent_id": self.agent_id},
         )

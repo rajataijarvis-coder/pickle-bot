@@ -1,7 +1,7 @@
 # tests/events/test_bus.py
 import pytest
 from picklebot.events.bus import EventBus
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ async def test_subscribe_and_notify(event_bus):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -55,7 +55,7 @@ async def test_multiple_subscribers(event_bus):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -79,7 +79,7 @@ async def test_unsubscribe(event_bus):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -106,14 +106,14 @@ async def test_subscribe_to_multiple_types(event_bus):
         type=EventType.OUTBOUND,
         session_id="test",
         content="Out",
-        source="agent",
+        source=Source.agent("test"),
         timestamp=1.0,
     )
     inbound_event = Event(
         type=EventType.INBOUND,
         session_id="test",
         content="In",
-        source="user",
+        source=Source.platform("telegram", "user1"),
         timestamp=2.0,
     )
 

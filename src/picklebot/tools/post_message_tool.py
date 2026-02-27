@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:
@@ -69,11 +69,12 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             session_id = str(uuid.uuid4())
 
             # Publish OUTBOUND event for the DeliveryWorker to handle
+            # TODO: Use session source instead of pickle when session is passed to tools
             event = Event(
                 type=EventType.OUTBOUND,
                 session_id=session_id,
                 content=content,
-                source="tool:post_message",
+                source=Source.pickle(),
                 timestamp=time.time(),
                 metadata={"platform": default_platform},
             )

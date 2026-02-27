@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from picklebot.events.delivery import chunk_message, DeliveryWorker
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 from picklebot.events.bus import EventBus
 
 
@@ -50,7 +50,7 @@ async def test_delivery_worker_handles_outbound_event(mock_context):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -81,7 +81,7 @@ async def test_delivery_worker_handles_cli_platform(mock_context, capsys):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello CLI",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -188,7 +188,7 @@ async def test_delivery_worker_handles_proactive_event(mock_context):
         type=EventType.OUTBOUND,
         session_id="test-uuid-1234",  # Just a UUID, platform comes from metadata
         content="Proactive message",
-        source="tool:post_message",
+        source=Source.pickle(),
         timestamp=12345.0,
         metadata={"platform": "telegram"},
     )

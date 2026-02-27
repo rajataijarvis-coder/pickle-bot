@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from picklebot.server.base import Worker
 from picklebot.core.agent import SessionMode, Agent
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
@@ -103,7 +103,7 @@ class MessageBusWorker(Worker):
                 session_id = self._get_or_create_session_id(platform, user_id)
 
                 # Build source and metadata
-                source = f"{platform}:{user_id}"
+                source = Source.platform(platform, user_id)
                 metadata = self._extract_metadata(context)
 
                 # Publish INBOUND event

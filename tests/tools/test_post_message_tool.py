@@ -109,7 +109,7 @@ class TestPostMessageToolExecution:
         assert isinstance(event, Event)
         assert event.type == EventType.OUTBOUND
         assert event.content == "Hello from agent!"
-        assert event.source == "tool:post_message"
+        assert event.source == "pickle"  # Internal pickle-bot source
         # session_id should be a UUID (not tied to specific conversation for proactive)
         assert len(event.session_id) == 36  # UUID format: 8-4-4-4-12
         assert event.metadata["platform"] == "telegram"

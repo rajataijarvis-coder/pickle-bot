@@ -1,65 +1,80 @@
 # tests/events/test_types.py
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 
 
-def test_event_creation():
-    event = Event(
-        type=EventType.OUTBOUND,
-        session_id="test-session",
-        content="Hello world",
-        source="agent:pickle",
-        timestamp=12345.0,
-        metadata={"agent_id": "pickle"},
-    )
-    assert event.type == EventType.OUTBOUND
-    assert event.session_id == "test-session"
-    assert event.content == "Hello world"
-    assert event.source == "agent:pickle"
-    assert event.timestamp == 12345.0
-    assert event.metadata == {"agent_id": "pickle"}
+class TestSource:
+    """Tests for Source factory methods."""
+
+    def test_source_agent(self):
+        assert Source.agent("pickle") == "agent:pickle"
+        assert Source.agent("cookie") == "agent:cookie"
+
+    def test_source_platform(self):
+        assert Source.platform("telegram", "user_123") == "telegram:user_123"
+        assert Source.platform("discord", "user_456") == "discord:user_456"
+
+    def test_source_pickle(self):
+        assert Source.pickle() == "pickle"
 
 
-def test_event_default_metadata():
-    event = Event(
-        type=EventType.INBOUND,
-        session_id="test-session",
-        content="Hi",
-        source="telegram:user_123",
-        timestamp=12345.0,
-    )
-    assert event.metadata == {}
+class TestEvent:
+    """Tests for Event creation and serialization."""
 
+    def test_event_creation(self):
+        event = Event(
+            type=EventType.OUTBOUND,
+            session_id="test-session",
+            content="Hello world",
+            source=Source.agent("pickle"),
+            timestamp=12345.0,
+            metadata={"agent_id": "pickle"},
+        )
+        assert event.type == EventType.OUTBOUND
+        assert event.session_id == "test-session"
+        assert event.content == "Hello world"
+        assert event.source == "agent:pickle"
+        assert event.timestamp == 12345.0
+        assert event.metadata == {"agent_id": "pickle"}
 
-def test_event_to_dict():
-    event = Event(
-        type=EventType.OUTBOUND,
-        session_id="test-session",
-        content="Hello",
-        source="agent:pickle",
-        timestamp=12345.0,
-        metadata={"key": "value"},
-    )
-    result = event.to_dict()
-    assert result == {
-        "type": "outbound",
-        "session_id": "test-session",
-        "content": "Hello",
-        "source": "agent:pickle",
-        "timestamp": 12345.0,
-        "metadata": {"key": "value"},
-    }
+    def test_event_default_metadata(self):
+        event = Event(
+            type=EventType.INBOUND,
+            session_id="test-session",
+            content="Hi",
+            source=Source.platform("telegram", "user_123"),
+            timestamp=12345.0,
+        )
+        assert event.metadata == {}
 
+    def test_event_to_dict(self):
+        event = Event(
+            type=EventType.OUTBOUND,
+            session_id="test-session",
+            content="Hello",
+            source=Source.agent("pickle"),
+            timestamp=12345.0,
+            metadata={"key": "value"},
+        )
+        result = event.to_dict()
+        assert result == {
+            "type": "outbound",
+            "session_id": "test-session",
+            "content": "Hello",
+            "source": "agent:pickle",
+            "timestamp": 12345.0,
+            "metadata": {"key": "value"},
+        }
 
-def test_event_from_dict():
-    data = {
-        "type": "outbound",
-        "session_id": "test-session",
-        "content": "Hello",
-        "source": "agent:pickle",
-        "timestamp": 12345.0,
-        "metadata": {"key": "value"},
-    }
-    event = Event.from_dict(data)
-    assert event.type == EventType.OUTBOUND
-    assert event.session_id == "test-session"
-    assert event.content == "Hello"
+    def test_event_from_dict(self):
+        data = {
+            "type": "outbound",
+            "session_id": "test-session",
+            "content": "Hello",
+            "source": "agent:pickle",
+            "timestamp": 12345.0,
+            "metadata": {"key": "value"},
+        }
+        event = Event.from_dict(data)
+        assert event.type == EventType.OUTBOUND
+        assert event.session_id == "test-session"
+        assert event.content == "Hello"

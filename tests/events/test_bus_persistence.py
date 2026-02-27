@@ -5,7 +5,7 @@ import pytest
 import tempfile
 from pathlib import Path
 from picklebot.events.bus import EventBus
-from picklebot.events.types import Event, EventType
+from picklebot.events.types import Event, EventType, Source
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ async def test_persist_outbound_event(event_bus, temp_events_dir):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -54,14 +54,14 @@ async def test_persist_skips_non_outbound(event_bus, temp_events_dir):
         type=EventType.INBOUND,
         session_id="test-session",
         content="Hi",
-        source="telegram:user",
+        source=Source.platform("telegram", "user1"),
         timestamp=12345.0,
     )
     status_event = Event(
         type=EventType.STATUS,
         session_id="test-session",
         content="Working...",
-        source="agent",
+        source=Source.agent("test"),
         timestamp=12345.0,
     )
 
@@ -79,7 +79,7 @@ async def test_ack_deletes_persisted_event(event_bus, temp_events_dir):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -105,7 +105,7 @@ async def test_atomic_write(event_bus, temp_events_dir):
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -133,7 +133,7 @@ async def test_publish_outbound_persists_and_notifies(event_bus, temp_events_dir
         type=EventType.OUTBOUND,
         session_id="test-session",
         content="Hello",
-        source="agent:pickle",
+        source=Source.agent("pickle"),
         timestamp=12345.0,
     )
 
@@ -163,7 +163,7 @@ async def test_publish_inbound_no_persist(event_bus, temp_events_dir):
         type=EventType.INBOUND,
         session_id="test-session",
         content="Hi",
-        source="telegram:user",
+        source=Source.platform("telegram", "user1"),
         timestamp=12345.0,
     )
 
