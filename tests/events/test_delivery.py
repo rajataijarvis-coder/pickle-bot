@@ -138,3 +138,75 @@ def test_platform_limits():
     assert PLATFORM_LIMITS["telegram"] == 4096
     assert PLATFORM_LIMITS["discord"] == 2000
     assert PLATFORM_LIMITS["cli"] == float("inf")
+
+
+def test_lookup_platform_proactive_session_id(mock_context):
+    """Should extract platform from proactive session ID pattern."""
+    # Configure telegram
+    mock_context.config.messagebus.telegram = MagicMock()
+    mock_context.config.messagebus.telegram.default_chat_id = "chat-123"
+
+    worker = DeliveryWorker(mock_context)
+
+    # Test proactive session ID format: proactive:<platform>:<uuid>
+    result = worker._lookup_platform("proactive:telegram:some-uuid-here")
+
+    assert result["platform"] == "telegram"
+    assert result["chat_id"] == "chat-123"
+
+
+def test_lookup_platform_proactive_metadata(mock_context):
+    """Should use platform from metadata when provided."""
+    # Configure discord
+    mock_context.config.messagebus.discord = MagicMock()
+    mock_context.config.messagebus.discord.default_chat_id = "channel-456"
+
+    worker = DeliveryWorker(mock_context)
+
+    # Test metadata-based proactive routing
+    result = worker._lookup_platform(
+        "some-session-id", metadata={"platform": "discord"}
+    )
+
+    assert result["platform"] == "discord"
+    assert result["channel_id"] == "channel-456"
+
+
+def test_lookup_platform_proactive_fallback_to_cli(mock_context):
+    """Should fallback to CLI for unknown platforms."""
+    worker = DeliveryWorker(mock_context)
+
+    # Test unknown platform
+    result = worker._lookup_platform("proactive:unknown-platform:some-uuid")
+
+    assert result["platform"] == "cli"
+
+
+@pytest.mark.asyncio
+async def test_delivery_worker_handles_proactive_event(mock_context):
+    """Should deliver proactive messages via post() instead of reply()."""
+    worker = DeliveryWorker(mock_context)
+
+    # Configure telegram
+    mock_context.config.messagebus.telegram = MagicMock()
+    mock_context.config.messagebus.telegram.default_chat_id = "chat-123"
+
+    # Create mock telegram bus
+    mock_telegram_bus = MagicMock()
+    mock_telegram_bus.platform_name = "telegram"
+    mock_telegram_bus.post = AsyncMock()
+    mock_context.messagebus_buses = [mock_telegram_bus]
+
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="proactive:telegram:test-uuid",
+        content="Proactive message",
+        source="tool:post_message",
+        timestamp=12345.0,
+        metadata={"platform": "telegram"},
+    )
+
+    await worker.handle_event(event)
+
+    # Should have called telegram bus post (not reply) for proactive message
+    mock_telegram_bus.post.assert_called_once_with("Proactive message")

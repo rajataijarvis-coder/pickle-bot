@@ -1,7 +1,10 @@
 """Post message tool factory for agent-initiated messaging."""
 
+import time
+import uuid
 from typing import TYPE_CHECKING
 
+from picklebot.events.types import Event, EventType
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:
@@ -29,6 +32,8 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
     default_platform = config.messagebus.default_platform
     if default_platform is None:
         return None
+
+    # Verify the bus exists
     bus_map = {bus.platform_name: bus for bus in context.messagebus_buses}
     default_bus = bus_map.get(default_platform)
 
@@ -61,8 +66,21 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             Success or error message
         """
         try:
-            await default_bus.post(content=content, target=None)
-            return f"Message sent successfully to {default_platform}"
+            # Create a proactive session ID for this message
+            # This allows the DeliveryWorker to route to the default platform
+            proactive_session_id = f"proactive:{default_platform}:{uuid.uuid4()}"
+
+            # Publish OUTBOUND event for the DeliveryWorker to handle
+            event = Event(
+                type=EventType.OUTBOUND,
+                session_id=proactive_session_id,
+                content=content,
+                source="tool:post_message",
+                timestamp=time.time(),
+                metadata={"platform": default_platform},
+            )
+            await context.eventbus.publish(event)
+            return f"Message queued for delivery to {default_platform}"
         except Exception as e:
             return f"Failed to send message: {e}"
 

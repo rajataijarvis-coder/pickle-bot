@@ -7,6 +7,7 @@ from pathlib import Path
 from picklebot.tools.post_message_tool import create_post_message_tool
 from picklebot.frontend.base import SilentFrontend
 from picklebot.utils.config import Config, MessageBusConfig, TelegramConfig
+from picklebot.events.types import Event, EventType
 
 
 def _make_context_with_messagebus(
@@ -85,22 +86,15 @@ class TestPostMessageToolExecution:
     """Tests for post_message tool execution."""
 
     @pytest.mark.anyio
-    async def test_sends_message_to_default_platform(self):
-        """Should send message to default_platform using post()."""
-
+    async def test_publishes_outbound_event(self):
+        """Should publish OUTBOUND event to eventbus instead of calling bus.post()."""
         context = _make_context_with_messagebus(
             enabled=True, default_platform="telegram"
         )
 
-        # Find the telegram bus and mock its post method
-        telegram_bus = next(
-            (b for b in context.messagebus_buses if b.platform_name == "telegram"), None
-        )
-        assert telegram_bus is not None
-
-        # Mock post
-        original_post = telegram_bus.post
-        telegram_bus.post = AsyncMock()
+        # Mock the eventbus.publish method
+        original_publish = context.eventbus.publish
+        context.eventbus.publish = AsyncMock()
 
         tool = create_post_message_tool(context)
         assert tool is not None
@@ -108,10 +102,44 @@ class TestPostMessageToolExecution:
         frontend = SilentFrontend()
         result = await tool.execute(frontend=frontend, content="Hello from agent!")
 
-        telegram_bus.post.assert_called_once_with(
-            content="Hello from agent!", target=None
-        )
-        assert "sent" in result.lower() or "success" in result.lower()
+        # Verify publish was called
+        context.eventbus.publish.assert_called_once()
+        call_args = context.eventbus.publish.call_args
+        event = call_args[0][0]
+
+        # Verify event properties
+        assert isinstance(event, Event)
+        assert event.type == EventType.OUTBOUND
+        assert event.content == "Hello from agent!"
+        assert event.source == "tool:post_message"
+        assert event.session_id.startswith("proactive:telegram:")
+        assert event.metadata["platform"] == "telegram"
+
+        # Verify result message
+        assert "queued" in result.lower() or "success" in result.lower()
 
         # Restore
-        telegram_bus.post = original_post
+        context.eventbus.publish = original_publish
+
+    @pytest.mark.anyio
+    async def test_returns_error_on_exception(self):
+        """Should return error message if publishing fails."""
+        context = _make_context_with_messagebus(
+            enabled=True, default_platform="telegram"
+        )
+
+        # Mock the eventbus.publish to raise an exception
+        original_publish = context.eventbus.publish
+        context.eventbus.publish = AsyncMock(side_effect=Exception("Test error"))
+
+        tool = create_post_message_tool(context)
+        assert tool is not None
+
+        frontend = SilentFrontend()
+        result = await tool.execute(frontend=frontend, content="Hello from agent!")
+
+        # Verify error message
+        assert "failed" in result.lower() or "error" in result.lower()
+
+        # Restore
+        context.eventbus.publish = original_publish

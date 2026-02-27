@@ -106,7 +106,7 @@ class DeliveryWorker:
 
         try:
             # Look up where to deliver
-            platform_info = self._lookup_platform(event.session_id)
+            platform_info = self._lookup_platform(event.session_id, event.metadata)
             platform = platform_info["platform"]
 
             # Get limit and chunk
@@ -134,8 +134,31 @@ class DeliveryWorker:
             self.logger.error(f"Failed to deliver message: {e}")
             # TODO: Retry logic with backoff
 
-    def _lookup_platform(self, session_id: str) -> dict[str, Any]:
-        """Look up platform and delivery context for a session."""
+    def _lookup_platform(
+        self, session_id: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Look up platform and delivery context for a session.
+
+        Args:
+            session_id: Session ID to look up
+            metadata: Optional event metadata (may contain 'platform' for proactive msgs)
+
+        Returns:
+            Dict with platform info (platform, user_id, chat_id/channel_id)
+        """
+        # Check for proactive session ID pattern or metadata
+        if session_id.startswith("proactive:"):
+            # Extract platform from session_id (format: proactive:<platform>:<uuid>)
+            parts = session_id.split(":")
+            if len(parts) >= 2:
+                platform = parts[1]
+                return self._get_proactive_platform_info(platform)
+
+        # Check metadata for platform (alternative proactive routing)
+        if metadata and "platform" in metadata:
+            platform = metadata["platform"]
+            return self._get_proactive_platform_info(platform)
+
         # Look in messagebus config for session -> platform mapping
         messagebus_config = self.context.config.messagebus
 
@@ -162,6 +185,31 @@ class DeliveryWorker:
                     }
 
         # Default to CLI if not found
+        return {"platform": "cli"}
+
+    def _get_proactive_platform_info(self, platform: str) -> dict[str, Any]:
+        """Get platform info for proactive messages.
+
+        Args:
+            platform: Target platform name
+
+        Returns:
+            Dict with platform info for proactive delivery
+        """
+        messagebus_config = self.context.config.messagebus
+
+        if platform == "telegram" and messagebus_config.telegram:
+            return {
+                "platform": "telegram",
+                "chat_id": messagebus_config.telegram.default_chat_id,
+            }
+        elif platform == "discord" and messagebus_config.discord:
+            return {
+                "platform": "discord",
+                "channel_id": messagebus_config.discord.default_chat_id,
+            }
+
+        # Default to CLI for unknown platforms
         return {"platform": "cli"}
 
     def _get_bus(self, platform: str) -> "MessageBus[Any] | None":
