@@ -1,5 +1,81 @@
 # tests/events/test_delivery.py
-from picklebot.events.delivery import chunk_message
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from picklebot.events.delivery import chunk_message, DeliveryWorker
+from picklebot.events.types import Event, EventType
+from picklebot.events.bus import EventBus
+
+
+@pytest.fixture
+def mock_context():
+    context = MagicMock()
+    context.config = MagicMock()
+    context.config.runtime = {}
+    context.eventbus = EventBus()
+    # Mock platform buses
+    context.telegram_bus = AsyncMock()
+    context.discord_bus = AsyncMock()
+    return context
+
+
+@pytest.mark.asyncio
+async def test_delivery_worker_creation(mock_context):
+    worker = DeliveryWorker(mock_context)
+    assert worker.context == mock_context
+
+
+@pytest.mark.asyncio
+async def test_delivery_worker_handles_outbound_event(mock_context):
+    worker = DeliveryWorker(mock_context)
+
+    # Mock the lookup
+    worker._lookup_platform = MagicMock(
+        return_value={
+            "platform": "telegram",
+            "chat_id": "123456",
+        }
+    )
+
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await worker.handle_event(event)
+
+    # Should have called telegram bus send
+    mock_context.telegram_bus.send.assert_called_once_with("123456", "Hello")
+
+
+@pytest.mark.asyncio
+async def test_delivery_worker_handles_cli_platform(mock_context, capsys):
+    worker = DeliveryWorker(mock_context)
+
+    # Mock the lookup for CLI
+    worker._lookup_platform = MagicMock(
+        return_value={
+            "platform": "cli",
+        }
+    )
+
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello CLI",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await worker.handle_event(event)
+
+    # Should print to stdout
+    captured = capsys.readouterr()
+    assert "Hello CLI" in captured.out
 
 
 def test_chunk_message_under_limit():
