@@ -88,6 +88,29 @@ class EventBus:
         os.replace(str(tmp_path), str(final_path))
         logger.debug(f"Persisted event to {final_path}")
 
+    async def recover(self) -> int:
+        """Recover pending events from previous crash. Returns count recovered."""
+        pending_files = list(self.pending_dir.glob("*.json"))
+        if not pending_files:
+            return 0
+
+        logger.info(f"Recovering {len(pending_files)} pending events")
+        count = 0
+
+        for file_path in pending_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                event = Event.from_dict(data)
+                await self._notify_subscribers(event)
+                count += 1
+                logger.debug(f"Recovered event from {file_path.name}")
+            except Exception as e:
+                logger.error(f"Failed to recover {file_path}: {e}")
+
+        logger.info(f"Recovered {count} events")
+        return count
+
     def ack(self, filename: str) -> None:
         """Acknowledge successful delivery, delete persisted event."""
         file_path = self.pending_dir / filename
