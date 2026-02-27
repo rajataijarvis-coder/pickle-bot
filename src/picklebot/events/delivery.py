@@ -7,6 +7,7 @@ from .types import Event, EventType
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
+    from picklebot.messagebus.base import MessageBus
 
 logger = logging.getLogger(__name__)
 
@@ -108,45 +109,73 @@ class DeliveryWorker:
 
     def _lookup_platform(self, session_id: str) -> dict[str, Any]:
         """Look up platform and delivery context for a session."""
-        # Check runtime config for session -> platform mapping
-        runtime_config = self.context.config.runtime
+        # Look in messagebus config for session -> platform mapping
+        messagebus_config = self.context.config.messagebus
 
-        # Look in messagebus config for session
-        if "messagebus" in runtime_config:
-            for platform in ["telegram", "discord"]:
-                platform_config = runtime_config.get("messagebus", {}).get(platform, {})
-                sessions = platform_config.get("sessions", {})
-                for user_id, sess_id in sessions.items():
-                    if sess_id == session_id:
-                        delivery_context = {}
-                        if platform == "telegram":
-                            delivery_context["chat_id"] = platform_config.get(
-                                "default_chat_id", ""
-                            )
-                        elif platform == "discord":
-                            delivery_context["channel_id"] = platform_config.get(
-                                "default_chat_id", ""
-                            )
-                        return {
-                            "platform": platform,
-                            **delivery_context,
-                        }
+        # Check Telegram sessions
+        if messagebus_config.telegram:
+            sessions = messagebus_config.telegram.sessions
+            for user_id, sess_id in sessions.items():
+                if sess_id == session_id:
+                    return {
+                        "platform": "telegram",
+                        "user_id": user_id,
+                        "chat_id": messagebus_config.telegram.default_chat_id,
+                    }
+
+        # Check Discord sessions
+        if messagebus_config.discord:
+            sessions = messagebus_config.discord.sessions
+            for user_id, sess_id in sessions.items():
+                if sess_id == session_id:
+                    return {
+                        "platform": "discord",
+                        "user_id": user_id,
+                        "channel_id": messagebus_config.discord.default_chat_id,
+                    }
 
         # Default to CLI if not found
         return {"platform": "cli"}
+
+    def _get_bus(self, platform: str) -> "MessageBus[Any] | None":
+        """Get the message bus for a platform."""
+        for bus in self.context.messagebus_buses:
+            if bus.platform_name == platform:
+                return bus
+        return None
 
     async def _deliver(
         self, platform: str, platform_info: dict[str, Any], content: str
     ) -> None:
         """Deliver a message chunk to a platform."""
-        if platform == "telegram":
+        bus = self._get_bus(platform)
+
+        if platform == "telegram" and bus is not None:
+            # Import here to avoid circular dependency
+            from picklebot.messagebus.telegram_bus import TelegramContext
+
             chat_id = platform_info.get("chat_id")
-            if chat_id and hasattr(self.context, "telegram_bus"):
-                await self.context.telegram_bus.send(chat_id, content)
-        elif platform == "discord":
+            user_id = platform_info.get("user_id")
+            if chat_id and user_id:
+                ctx = TelegramContext(user_id=user_id, chat_id=chat_id)
+                await bus.reply(content, ctx)
+            elif chat_id:
+                # Use post for proactive message to default chat
+                await bus.post(content)
+
+        elif platform == "discord" and bus is not None:
+            # Import here to avoid circular dependency
+            from picklebot.messagebus.discord_bus import DiscordContext
+
             channel_id = platform_info.get("channel_id")
-            if channel_id and hasattr(self.context, "discord_bus"):
-                await self.context.discord_bus.send(channel_id, content)
+            user_id = platform_info.get("user_id")
+            if channel_id and user_id:
+                ctx = DiscordContext(user_id=user_id, channel_id=channel_id)
+                await bus.reply(content, ctx)
+            elif channel_id:
+                # Use post for proactive message to default channel
+                await bus.post(content)
+
         elif platform == "cli":
             # CLI just prints to stdout
             print(content)

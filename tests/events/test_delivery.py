@@ -1,5 +1,5 @@
 # tests/events/test_delivery.py
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,11 +12,12 @@ from picklebot.events.bus import EventBus
 def mock_context():
     context = MagicMock()
     context.config = MagicMock()
-    context.config.runtime = {}
+    context.config.messagebus = MagicMock()
+    context.config.messagebus.telegram = None
+    context.config.messagebus.discord = None
     context.eventbus = EventBus()
-    # Mock platform buses
-    context.telegram_bus = AsyncMock()
-    context.discord_bus = AsyncMock()
+    # Mock platform buses list
+    context.messagebus_buses = []
     return context
 
 
@@ -34,9 +35,16 @@ async def test_delivery_worker_handles_outbound_event(mock_context):
     worker._lookup_platform = MagicMock(
         return_value={
             "platform": "telegram",
+            "user_id": "user123",
             "chat_id": "123456",
         }
     )
+
+    # Create mock telegram bus
+    mock_telegram_bus = MagicMock()
+    mock_telegram_bus.platform_name = "telegram"
+    mock_telegram_bus.reply = AsyncMock()
+    mock_context.messagebus_buses = [mock_telegram_bus]
 
     event = Event(
         type=EventType.OUTBOUND,
@@ -46,10 +54,16 @@ async def test_delivery_worker_handles_outbound_event(mock_context):
         timestamp=12345.0,
     )
 
-    await worker.handle_event(event)
+    # Patch at the module where TelegramContext is defined
+    with patch("picklebot.messagebus.telegram_bus.TelegramContext") as MockContext:
+        mock_ctx_instance = MagicMock()
+        MockContext.return_value = mock_ctx_instance
 
-    # Should have called telegram bus send
-    mock_context.telegram_bus.send.assert_called_once_with("123456", "Hello")
+        await worker.handle_event(event)
+
+        # Should have called telegram bus reply with content and context
+        mock_telegram_bus.reply.assert_called_once_with("Hello", mock_ctx_instance)
+        MockContext.assert_called_once_with(user_id="user123", chat_id="123456")
 
 
 @pytest.mark.asyncio
