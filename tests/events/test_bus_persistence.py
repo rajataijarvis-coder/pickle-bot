@@ -1,0 +1,119 @@
+# tests/events/test_bus_persistence.py
+import json
+import pytest
+import tempfile
+from pathlib import Path
+from picklebot.events.bus import EventBus
+from picklebot.events.types import Event, EventType
+
+
+@pytest.fixture
+def temp_events_dir():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+@pytest.fixture
+def event_bus(temp_events_dir):
+    return EventBus(events_dir=temp_events_dir)
+
+
+def test_event_bus_has_persistence_dir(event_bus, temp_events_dir):
+    assert event_bus.events_dir == temp_events_dir
+    assert event_bus.pending_dir == temp_events_dir / "pending"
+    assert event_bus.failed_dir == temp_events_dir / "failed"
+
+
+@pytest.mark.asyncio
+async def test_persist_outbound_event(event_bus, temp_events_dir):
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await event_bus._persist(event)
+
+    # Check file was created
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 1
+
+    # Verify content
+    with open(pending_files[0]) as f:
+        data = json.load(f)
+    assert data["session_id"] == "test-session"
+    assert data["content"] == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_persist_skips_non_outbound(event_bus, temp_events_dir):
+    inbound_event = Event(
+        type=EventType.INBOUND,
+        session_id="test-session",
+        content="Hi",
+        source="telegram:user",
+        timestamp=12345.0,
+    )
+    status_event = Event(
+        type=EventType.STATUS,
+        session_id="test-session",
+        content="Working...",
+        source="agent",
+        timestamp=12345.0,
+    )
+
+    await event_bus._persist(inbound_event)
+    await event_bus._persist(status_event)
+
+    # No files should be created
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 0
+
+
+@pytest.mark.asyncio
+async def test_ack_deletes_persisted_event(event_bus, temp_events_dir):
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await event_bus._persist(event)
+
+    # Get the filename
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 1
+    filename = pending_files[0].name
+
+    # Ack the event
+    event_bus.ack(filename)
+
+    # File should be deleted
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 0
+
+
+@pytest.mark.asyncio
+async def test_atomic_write(event_bus, temp_events_dir):
+    """Test that files are written atomically (tmp + fsync + rename)."""
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await event_bus._persist(event)
+
+    # No temp files should remain
+    tmp_files = list((temp_events_dir / "pending").glob(".tmp.*"))
+    assert len(tmp_files) == 0
+
+    # Only final file should exist
+    json_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(json_files) == 1
