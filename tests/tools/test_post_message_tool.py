@@ -110,7 +110,8 @@ class TestPostMessageToolExecution:
         assert event.type == EventType.OUTBOUND
         assert event.content == "Hello from agent!"
         assert event.source == "tool:post_message"
-        assert event.session_id.startswith("proactive:telegram:")
+        # session_id should be a UUID (not tied to specific conversation for proactive)
+        assert len(event.session_id) == 36  # UUID format: 8-4-4-4-12
         assert event.metadata["platform"] == "telegram"
 
         # Verify result message

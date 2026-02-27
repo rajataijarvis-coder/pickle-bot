@@ -140,21 +140,13 @@ class DeliveryWorker:
         """Look up platform and delivery context for a session.
 
         Args:
-            session_id: Session ID to look up
+            session_id: Session ID to look up (UUID format)
             metadata: Optional event metadata (may contain 'platform' for proactive msgs)
 
         Returns:
             Dict with platform info (platform, user_id, chat_id/channel_id)
         """
-        # Check for proactive session ID pattern or metadata
-        if session_id.startswith("proactive:"):
-            # Extract platform from session_id (format: proactive:<platform>:<uuid>)
-            parts = session_id.split(":")
-            if len(parts) >= 2:
-                platform = parts[1]
-                return self._get_proactive_platform_info(platform)
-
-        # Check metadata for platform (alternative proactive routing)
+        # Check metadata for platform (proactive messages from tools)
         if metadata and "platform" in metadata:
             platform = metadata["platform"]
             return self._get_proactive_platform_info(platform)

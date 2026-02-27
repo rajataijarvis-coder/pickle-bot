@@ -140,21 +140,6 @@ def test_platform_limits():
     assert PLATFORM_LIMITS["cli"] == float("inf")
 
 
-def test_lookup_platform_proactive_session_id(mock_context):
-    """Should extract platform from proactive session ID pattern."""
-    # Configure telegram
-    mock_context.config.messagebus.telegram = MagicMock()
-    mock_context.config.messagebus.telegram.default_chat_id = "chat-123"
-
-    worker = DeliveryWorker(mock_context)
-
-    # Test proactive session ID format: proactive:<platform>:<uuid>
-    result = worker._lookup_platform("proactive:telegram:some-uuid-here")
-
-    assert result["platform"] == "telegram"
-    assert result["chat_id"] == "chat-123"
-
-
 def test_lookup_platform_proactive_metadata(mock_context):
     """Should use platform from metadata when provided."""
     # Configure discord
@@ -176,8 +161,10 @@ def test_lookup_platform_proactive_fallback_to_cli(mock_context):
     """Should fallback to CLI for unknown platforms."""
     worker = DeliveryWorker(mock_context)
 
-    # Test unknown platform
-    result = worker._lookup_platform("proactive:unknown-platform:some-uuid")
+    # Test unknown platform via metadata
+    result = worker._lookup_platform(
+        "some-session-id", metadata={"platform": "unknown-platform"}
+    )
 
     assert result["platform"] == "cli"
 
@@ -199,7 +186,7 @@ async def test_delivery_worker_handles_proactive_event(mock_context):
 
     event = Event(
         type=EventType.OUTBOUND,
-        session_id="proactive:telegram:test-uuid",
+        session_id="test-uuid-1234",  # Just a UUID, platform comes from metadata
         content="Proactive message",
         source="tool:post_message",
         timestamp=12345.0,

@@ -64,14 +64,14 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             Success or error message
         """
         try:
-            # Create a proactive session ID for this message
-            # This allows the DeliveryWorker to route to the default platform
-            proactive_session_id = f"proactive:{default_platform}:{uuid.uuid4()}"
+            # TODO: Pass session object into tool calls so we can use the actual session_id
+            # For now, generate a UUID for proactive messages (no associated conversation)
+            session_id = str(uuid.uuid4())
 
             # Publish OUTBOUND event for the DeliveryWorker to handle
             event = Event(
                 type=EventType.OUTBOUND,
-                session_id=proactive_session_id,
+                session_id=session_id,
                 content=content,
                 source="tool:post_message",
                 timestamp=time.time(),
