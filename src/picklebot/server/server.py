@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 import uvicorn
 
+from picklebot.events.delivery import DeliveryWorker
 from picklebot.server.base import Worker
 from picklebot.server.agent_worker import AgentDispatcherWorker
 from picklebot.server.cron_worker import CronWorker
+from picklebot.server.inbound_bridge import InboundEventBridge
 from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.utils.config import ConfigReloader
 from picklebot.api import create_app
@@ -44,10 +46,23 @@ class Server:
             raise
 
     def _setup_workers(self) -> None:
-        """Create all workers."""
+        """Create all workers and subscribe event handlers."""
         self.workers.append(AgentDispatcherWorker(self.context))
         self.workers.append(CronWorker(self.context))
         self.config_reloader.start()
+
+        # Create and subscribe DeliveryWorker for OUTBOUND events
+        self.delivery_worker = DeliveryWorker(self.context)
+        self.delivery_worker.subscribe(self.context.eventbus)
+        logger.info("DeliveryWorker subscribed to OUTBOUND events")
+
+        # Create and subscribe InboundEventBridge for INBOUND events
+        agent_id = self.context.config.default_agent
+        self.inbound_bridge = InboundEventBridge(self.context, agent_id)
+        self.inbound_bridge.subscribe(self.context.eventbus)
+        logger.info(
+            f"InboundEventBridge subscribed to INBOUND events for agent '{agent_id}'"
+        )
 
         if self.context.config.messagebus.enabled:
             buses = self.context.messagebus_buses
