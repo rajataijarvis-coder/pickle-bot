@@ -1,13 +1,13 @@
 """Post message tool factory for agent-initiated messaging."""
 
 import time
-import uuid
 from typing import TYPE_CHECKING
 
 from picklebot.events.types import Event, EventType, Source
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:
+    from picklebot.core.agent import AgentSession
     from picklebot.core.context import SharedContext
 
 
@@ -53,28 +53,33 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             "required": ["content"],
         },
     )
-    async def post_message(content: str) -> str:
+    async def post_message(content: str, session: "AgentSession | None" = None) -> str:
         """
         Send a message to the default user on the default platform.
 
         Args:
             content: Message content to send
+            session: The agent session context
 
         Returns:
             Success or error message
         """
         try:
-            # TODO: Pass session object into tool calls so we can use the actual session_id
-            # For now, generate a UUID for proactive messages (no associated conversation)
-            session_id = str(uuid.uuid4())
+            # Use session info if available, otherwise use defaults for proactive messages
+            if session:
+                session_id = session.session_id
+                source = Source.agent(session.agent_id)
+            else:
+                # Fallback for calls without session (shouldn't happen in normal flow)
+                session_id = "proactive"
+                source = Source.pickle()
 
             # Publish OUTBOUND event for the DeliveryWorker to handle
-            # TODO: Use session source instead of pickle when session is passed to tools
             event = Event(
                 type=EventType.OUTBOUND,
                 session_id=session_id,
                 content=content,
-                source=Source.pickle(),
+                source=source,
                 timestamp=time.time(),
                 metadata={"platform": default_platform},
             )

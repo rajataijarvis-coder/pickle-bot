@@ -15,9 +15,11 @@ class MockTool(BaseTool):
 
     def __init__(self):
         self.last_kwargs = None
+        self.last_session = None
 
-    async def execute(self, **kwargs):
+    async def execute(self, session=None, **kwargs):
         """Execute mock tool, store kwargs for verification."""
+        self.last_session = session
         self.last_kwargs = kwargs
         return "mock result"
 
@@ -79,8 +81,9 @@ class TestToolRegistry:
 
         result = await registry.execute_tool("mock_tool", arg1="value1")
 
-        # Verify tool received the kwargs
+        # Verify tool received the kwargs (session is separate)
         assert tool.last_kwargs == {"arg1": "value1"}
+        assert tool.last_session is None
         assert result == "mock result"
 
     @pytest.mark.anyio

@@ -109,13 +109,49 @@ class TestPostMessageToolExecution:
         assert isinstance(event, Event)
         assert event.type == EventType.OUTBOUND
         assert event.content == "Hello from agent!"
-        assert event.source == "pickle"  # Internal pickle-bot source
-        # session_id should be a UUID (not tied to specific conversation for proactive)
-        assert len(event.session_id) == 36  # UUID format: 8-4-4-4-12
+        assert event.source == "pickle"  # Fallback source when no session
+        # session_id falls back to "proactive" when no session provided
+        assert event.session_id == "proactive"
         assert event.metadata["platform"] == "telegram"
 
         # Verify result message
         assert "queued" in result.lower() or "success" in result.lower()
+
+        # Restore
+        context.eventbus.publish = original_publish
+
+    @pytest.mark.anyio
+    async def test_uses_session_when_provided(self):
+        """Should use session info for session_id and source when session is provided."""
+        from unittest.mock import MagicMock
+
+        context = _make_context_with_messagebus(
+            enabled=True, default_platform="telegram"
+        )
+
+        # Mock the eventbus.publish method
+        original_publish = context.eventbus.publish
+        context.eventbus.publish = AsyncMock()
+
+        # Create mock session
+        mock_session = MagicMock()
+        mock_session.session_id = "test-session-123"
+        mock_session.agent_id = "test-agent"
+
+        tool = create_post_message_tool(context)
+        assert tool is not None
+
+        result = await tool.execute(session=mock_session, content="Hello from agent!")
+
+        # Verify publish was called
+        context.eventbus.publish.assert_called_once()
+        call_args = context.eventbus.publish.call_args
+        event = call_args[0][0]
+
+        # Verify event uses session info
+        assert event.session_id == "test-session-123"
+        assert event.source == "agent:test-agent"
+        assert event.metadata["platform"] == "telegram"
 
         # Restore
         context.eventbus.publish = original_publish

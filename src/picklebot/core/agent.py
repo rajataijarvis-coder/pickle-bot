@@ -310,7 +310,7 @@ class AgentSession:
             args = {}
 
         try:
-            result = await self.tools.execute_tool(tool_call.name, **args)
+            result = await self.tools.execute_tool(tool_call.name, session=self, **args)
         except Exception as e:
             result = f"Error executing tool: {e}"
 

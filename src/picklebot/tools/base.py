@@ -2,7 +2,10 @@
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from picklebot.core.agent import AgentSession
 
 
 class BaseTool(ABC):
@@ -13,10 +16,13 @@ class BaseTool(ABC):
     parameters: dict[str, Any]  # JSON Schema for function calling
 
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(
+        self, session: "AgentSession | None" = None, **kwargs: Any
+    ) -> str:
         """Execute the tool.
 
         Args:
+            session: The agent session context (optional)
             **kwargs: Tool-specific arguments
         """
 
@@ -56,13 +62,24 @@ class FunctionTool(BaseTool):
         self.parameters = parameters
         self._func = func
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(
+        self, session: "AgentSession | None" = None, **kwargs: Any
+    ) -> str:
         """Execute the underlying function.
 
         Args:
+            session: The agent session context (optional)
             **kwargs: Tool-specific arguments
         """
-        result = self._func(**kwargs)
+        # Pass session if the function accepts it
+        import inspect
+
+        sig = inspect.signature(self._func)
+        if "session" in sig.parameters:
+            result = self._func(session=session, **kwargs)
+        else:
+            result = self._func(**kwargs)
+
         if asyncio.iscoroutine(result):
             result = await result
         return str(result)
