@@ -41,6 +41,16 @@ class EventBus:
                 self._subscribers[event_type].remove(handler)
                 logger.debug(f"Unsubscribed handler from {event_type.value} events")
 
+    async def publish(self, event: Event) -> None:
+        """Publish an event: persist if OUTBOUND, then notify subscribers."""
+        # Persist first (blocking, for OUTBOUND only)
+        await self._persist(event)
+
+        # Then notify subscribers (non-blocking)
+        await self._notify_subscribers(event)
+
+        logger.debug(f"Published {event.type.value} event from {event.source}")
+
     async def _notify_subscribers(self, event: Event) -> None:
         """Notify all subscribers of an event (waits for all handlers to complete)."""
         handlers = self._subscribers.get(event.type, [])

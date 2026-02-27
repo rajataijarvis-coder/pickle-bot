@@ -1,4 +1,5 @@
 # tests/events/test_bus_persistence.py
+import asyncio
 import json
 import pytest
 import tempfile
@@ -117,3 +118,62 @@ async def test_atomic_write(event_bus, temp_events_dir):
     # Only final file should exist
     json_files = list((temp_events_dir / "pending").glob("*.json"))
     assert len(json_files) == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_outbound_persists_and_notifies(event_bus, temp_events_dir):
+    received = []
+
+    async def handler(event: Event):
+        received.append(event)
+
+    event_bus.subscribe(EventType.OUTBOUND, handler)
+
+    event = Event(
+        type=EventType.OUTBOUND,
+        session_id="test-session",
+        content="Hello",
+        source="agent:pickle",
+        timestamp=12345.0,
+    )
+
+    await event_bus.publish(event)
+
+    # Allow async tasks to complete
+    await asyncio.sleep(0.1)
+
+    # Should have persisted
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 1
+
+    # Should have notified subscriber
+    assert len(received) == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_inbound_no_persist(event_bus, temp_events_dir):
+    received = []
+
+    async def handler(event: Event):
+        received.append(event)
+
+    event_bus.subscribe(EventType.INBOUND, handler)
+
+    event = Event(
+        type=EventType.INBOUND,
+        session_id="test-session",
+        content="Hi",
+        source="telegram:user",
+        timestamp=12345.0,
+    )
+
+    await event_bus.publish(event)
+
+    await asyncio.sleep(0.1)
+
+    # Should NOT have persisted
+    pending_files = list((temp_events_dir / "pending").glob("*.json"))
+    assert len(pending_files) == 0
+
+    # Should have notified subscriber
+    assert len(received) == 1
