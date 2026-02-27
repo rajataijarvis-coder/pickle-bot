@@ -228,7 +228,9 @@ You are the target agent.
         assert "test-session" in result
 
     @pytest.mark.anyio
-    async def test_queue_mode_creates_job_with_correct_fields(self, mock_context_with_queue):
+    async def test_queue_mode_creates_job_with_correct_fields(
+        self, mock_context_with_queue
+    ):
         """Queue mode should create Job with correct agent_id, message, and mode."""
         tool_func = create_subagent_dispatch_tool("caller", mock_context_with_queue)
         assert tool_func is not None
