@@ -251,21 +251,6 @@ class Config(BaseModel):
         with open(config_path, "w") as f:
             yaml.dump(data, f)
 
-    def _update_in_memory(self, key: str, value: Any) -> None:
-        """Update in-memory config, supporting nested attributes and dict keys."""
-        keys = key.split(".")
-        obj = self
-        for k in keys[:-1]:
-            if isinstance(obj, dict):
-                obj = obj[k]
-            else:
-                obj = getattr(obj, k)
-
-        final_key = keys[-1]
-        if isinstance(obj, dict):
-            obj[final_key] = value
-        else:
-            setattr(obj, final_key, value)
 
     def set_user(self, key: str, value: Any) -> None:
         """
@@ -276,7 +261,6 @@ class Config(BaseModel):
             value: New value
         """
         self._set_config_value(self.workspace / "config.user.yaml", key, value)
-        self._update_in_memory(key, value)
 
     def set_runtime(self, key: str, value: Any) -> None:
         """
@@ -287,7 +271,6 @@ class Config(BaseModel):
             value: New value
         """
         self._set_config_value(self.workspace / "config.runtime.yaml", key, value)
-        self._update_in_memory(key, value)
 
     def reload(self) -> bool:
         """
@@ -297,23 +280,7 @@ class Config(BaseModel):
             True if reload succeeded, False if file not found or invalid
         """
         try:
-            user_config = self.workspace / "config.user.yaml"
-            runtime_config = self.workspace / "config.runtime.yaml"
-
-            config_data: dict[str, Any] = {"workspace": self.workspace}
-
-            if user_config.exists():
-                with open(user_config) as f:
-                    user_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, user_data)
-
-            if runtime_config.exists():
-                with open(runtime_config) as f:
-                    runtime_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, runtime_data)
-
-            # Create new instance and copy values
-            new_config = Config.model_validate(config_data)
+            new_config = Config.load(self.workspace)
 
             # Update all fields from new config
             for field_name in Config.model_fields:
@@ -342,14 +309,13 @@ class ConfigReloader:
 
     def __init__(self, config: Config):
         self._config = config
-        self._observer: Observer | None = None
+        self._observer = Observer()
 
     def start(self) -> None:
         """Start watching config file for changes."""
         if self._observer is not None:
             return
 
-        self._observer = Observer()
         handler = ConfigHandler(self._config)
         self._observer.schedule(handler, str(self._config.workspace), recursive=False)
         self._observer.start()
@@ -359,4 +325,4 @@ class ConfigReloader:
         if self._observer is not None:
             self._observer.stop()
             self._observer.join()
-            self._observer = None
+            del self._observer
