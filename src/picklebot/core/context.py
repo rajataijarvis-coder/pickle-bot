@@ -6,6 +6,7 @@ from picklebot.core.commands.registry import CommandRegistry
 from picklebot.core.cron_loader import CronLoader
 from picklebot.core.history import HistoryStore
 from picklebot.core.skill_loader import SkillLoader
+from picklebot.events.bus import EventBus
 from picklebot.messagebus.base import MessageBus
 from picklebot.utils.config import Config
 
@@ -23,6 +24,7 @@ class SharedContext:
     cron_loader: CronLoader
     command_registry: CommandRegistry
     messagebus_buses: list[MessageBus[Any]]
+    eventbus: EventBus
     _agent_queue: asyncio.Queue["Job"] | None
 
     def __init__(
@@ -41,6 +43,7 @@ class SharedContext:
         else:
             self.messagebus_buses = MessageBus.from_config(config)
 
+        self.eventbus = EventBus()
         self._agent_queue = None
 
     @property
