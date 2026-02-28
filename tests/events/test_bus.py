@@ -1,6 +1,6 @@
 # tests/events/test_bus.py
 import pytest
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 
 
 @pytest.fixture

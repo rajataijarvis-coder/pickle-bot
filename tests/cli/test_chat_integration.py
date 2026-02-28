@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from picklebot.core.context import SharedContext
-from picklebot.events.types import Event, EventType
+from picklebot.core.events import Event, EventType
 from picklebot.messagebus.cli_bus import CliBus
 from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.messagebus_worker import MessageBusWorker

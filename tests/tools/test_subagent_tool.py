@@ -9,7 +9,7 @@ import pytest
 
 from picklebot.core.context import SharedContext
 from picklebot.tools.subagent_tool import create_subagent_dispatch_tool
-from picklebot.events.types import EventType, Event
+from picklebot.core.events import EventType, Event
 
 
 def _make_mock_session():

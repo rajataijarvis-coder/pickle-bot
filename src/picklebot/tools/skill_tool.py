@@ -3,13 +3,13 @@
 from typing import TYPE_CHECKING
 
 from picklebot.tools.base import tool
-from picklebot.core.skill_loader import SkillLoader
 
 if TYPE_CHECKING:
+    from picklebot.core.skill_loader import SkillLoader
     from picklebot.core.agent import AgentSession
 
 
-def create_skill_tool(skill_loader: SkillLoader):
+def create_skill_tool(skill_loader: "SkillLoader"):
     """Factory function to create skill tool with dynamic schema.
 
     Args:

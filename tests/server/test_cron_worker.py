@@ -8,7 +8,7 @@ from unittest.mock import patch
 from picklebot.server.cron_worker import CronWorker, find_due_jobs
 from picklebot.core.cron_loader import CronDef
 from picklebot.core.agent import SessionMode
-from picklebot.events.types import EventType, Event
+from picklebot.core.events import EventType, Event
 
 
 def test_find_due_jobs_returns_matching():

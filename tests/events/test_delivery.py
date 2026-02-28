@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from picklebot.events.types import Event, EventType, Source
-from picklebot.events.bus import EventBus
+from picklebot.core.events import Event, EventType, Source
+from picklebot.core.eventbus import EventBus
 from picklebot.server.delivery_worker import chunk_message, DeliveryWorker
 
 

@@ -9,7 +9,7 @@ from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.messagebus.base import MessageContext
 from picklebot.core.commands import CommandRegistry
 from picklebot.core.context import SharedContext
-from picklebot.events.types import Event, EventType
+from picklebot.core.events import Event, EventType
 
 
 @dataclass

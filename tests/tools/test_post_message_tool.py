@@ -6,7 +6,7 @@ from pathlib import Path
 
 from picklebot.tools.post_message_tool import create_post_message_tool
 from picklebot.utils.config import Config, MessageBusConfig, TelegramConfig
-from picklebot.events.types import Event, EventType
+from picklebot.core.events import Event, EventType
 
 
 def _make_context_with_messagebus(

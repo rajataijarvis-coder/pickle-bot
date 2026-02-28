@@ -4,8 +4,8 @@ import pytest
 import asyncio
 from unittest.mock import MagicMock
 
-from picklebot.events.bus import EventBus
-from picklebot.events.types import Event, EventType
+from picklebot.core.eventbus import EventBus
+from picklebot.core.events import Event, EventType
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from picklebot.tools.base import BaseTool, tool
 from picklebot.utils.def_loader import DefNotFoundError
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 
 if TYPE_CHECKING:
     from picklebot.core.agent import AgentSession

@@ -3,8 +3,8 @@ import pytest
 from unittest.mock import MagicMock
 
 from picklebot.server.websocket_worker import WebSocketWorker
-from picklebot.events.types import Event, EventType, Source
-from picklebot.events.bus import EventBus
+from picklebot.core.events import Event, EventType, Source
+from picklebot.core.eventbus import EventBus
 
 
 @pytest.fixture

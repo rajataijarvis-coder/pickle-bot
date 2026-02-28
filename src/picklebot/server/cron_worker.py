@@ -12,7 +12,7 @@ from croniter import croniter
 
 from .worker import Worker
 from picklebot.core.agent import SessionMode
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 
 if TYPE_CHECKING:
     from picklebot.core.cron_loader import CronDef

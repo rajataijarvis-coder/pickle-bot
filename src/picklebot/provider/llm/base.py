@@ -2,12 +2,13 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, Optional, cast, TYPE_CHECKING
 
 from litellm import acompletion, Choices
 from litellm.types.completion import ChatCompletionMessageParam as Message
 
-from picklebot.utils.config import LLMConfig
+if TYPE_CHECKING:
+    from picklebot.utils.config import LLMConfig
 
 
 @dataclass
@@ -80,7 +81,7 @@ class LLMProvider(ABC):
         return providers
 
     @staticmethod
-    def from_config(config: LLMConfig) -> "LLMProvider":
+    def from_config(config: "LLMConfig") -> "LLMProvider":
         """Create a provider from config."""
         provider_name = config.provider.lower()
         if provider_name not in LLMProvider.name2provider:

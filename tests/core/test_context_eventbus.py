@@ -1,7 +1,7 @@
 """Tests for SharedContext EventBus integration."""
 
 from picklebot.core.context import SharedContext
-from picklebot.events.bus import EventBus
+from picklebot.core.eventbus import EventBus
 from picklebot.utils.config import Config
 
 

@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from .worker import SubscriberWorker
-from picklebot.events.types import Event, EventType
+from picklebot.core.events import Event, EventType
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext

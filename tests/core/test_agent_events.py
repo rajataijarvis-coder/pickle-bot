@@ -9,7 +9,7 @@ import pytest
 from picklebot.core.agent import Agent, SessionMode
 from picklebot.core.agent_loader import AgentDef
 from picklebot.core.context import SharedContext
-from picklebot.events.types import Event, EventType
+from picklebot.core.events import Event, EventType
 from picklebot.utils.config import Config, LLMConfig
 
 

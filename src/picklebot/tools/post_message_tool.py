@@ -3,7 +3,7 @@
 import time
 from typing import TYPE_CHECKING
 
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:

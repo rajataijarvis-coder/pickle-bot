@@ -3,7 +3,7 @@
 import asyncio
 import json
 import pytest
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
 # tests/events/test_types.py
-from picklebot.events.types import Event, EventType, Source
+from picklebot.core.events import Event, EventType, Source
 
 
 class TestEvent:

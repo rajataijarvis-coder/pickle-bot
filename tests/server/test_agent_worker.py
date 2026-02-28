@@ -14,7 +14,7 @@ from picklebot.server.agent_worker import (
     AgentDispatcher,
     SessionExecutor,
 )
-from picklebot.events.types import EventType, Event
+from picklebot.core.events import EventType, Event
 
 
 def make_event(

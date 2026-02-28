@@ -1,15 +1,12 @@
 import uuid
 import json
-import time
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from picklebot.core.context import SharedContext
 from picklebot.core.history import HistoryMessage
-from picklebot.events.types import Event, EventType, Source
 from picklebot.provider.llm import LLMProvider
 from picklebot.tools.registry import ToolRegistry
 from picklebot.tools.skill_tool import create_skill_tool
@@ -24,8 +21,9 @@ from litellm.types.completion import (
 )
 
 if TYPE_CHECKING:
+    from picklebot.core.context import SharedContext
     from picklebot.core.agent_loader import AgentDef
-    from picklebot.provider import LLMToolCall
+    from picklebot.provider.llm import LLMToolCall
 
 
 class SessionMode(str, Enum):
@@ -43,7 +41,7 @@ class Agent:
     that sessions use for chatting.
     """
 
-    def __init__(self, agent_def: "AgentDef", context: SharedContext) -> None:
+    def __init__(self, agent_def: "AgentDef", context: "SharedContext") -> None:
         self.agent_def = agent_def
         self.context = context
         self.llm = LLMProvider.from_config(agent_def.llm)
@@ -172,7 +170,7 @@ class AgentSession:
 
     session_id: str
     agent_id: str
-    context: SharedContext
+    context: "SharedContext"
     agent: Agent  # Reference to parent agent for LLM access
     tools: ToolRegistry  # Session's own tool registry
     mode: SessionMode  # Session mode (CHAT or JOB)
@@ -242,16 +240,6 @@ class AgentSession:
 
             continue
 
-        # Publish OUTBOUND event for the response
-        event = Event(
-            type=EventType.OUTBOUND,
-            session_id=self.session_id,
-            content=content,
-            source=Source.agent(self.agent_id),
-            timestamp=time.time(),
-            metadata={"agent_id": self.agent_id},
-        )
-        await self.context.eventbus.publish(event)
         return content
 
     def _build_messages(self) -> list[Message]:
