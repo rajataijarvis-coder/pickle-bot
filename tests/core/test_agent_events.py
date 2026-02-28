@@ -68,7 +68,9 @@ async def test_chat_publishes_outbound_event(
 
     try:
         # Mock the LLM to return a response
-        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+        with patch.object(
+            mock_agent.llm, "chat", new_callable=AsyncMock
+        ) as mock_llm_chat:
             mock_llm_chat.return_value = ("Hello! How can I help you?", [])
 
             # Call chat
@@ -119,7 +121,9 @@ async def test_chat_event_has_valid_timestamp(
     try:
         before_time = time.time()
 
-        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+        with patch.object(
+            mock_agent.llm, "chat", new_callable=AsyncMock
+        ) as mock_llm_chat:
             mock_llm_chat.return_value = ("Response", [])
 
             await session.chat("Test")
@@ -177,7 +181,9 @@ async def test_chat_with_tool_calls_publishes_outbound_event(
             else:
                 return ("The file contains test data.", [])
 
-        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+        with patch.object(
+            mock_agent.llm, "chat", new_callable=AsyncMock
+        ) as mock_llm_chat:
             mock_llm_chat.side_effect = mock_chat_response
 
             # Mock the tool execution
@@ -227,7 +233,9 @@ async def test_chat_event_published_after_response(
     eventbus_task = mock_context.eventbus.start()
 
     try:
-        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+        with patch.object(
+            mock_agent.llm, "chat", new_callable=AsyncMock
+        ) as mock_llm_chat:
             mock_llm_chat.return_value = ("Test response", [])
 
             response = await session.chat("Hi")

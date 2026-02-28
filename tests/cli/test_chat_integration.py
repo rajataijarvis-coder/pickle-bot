@@ -9,7 +9,7 @@ import pytest
 from picklebot.core.context import SharedContext
 from picklebot.events.types import Event, EventType
 from picklebot.messagebus.cli_bus import CliBus
-from picklebot.server.agent_worker import AgentDispatcher
+from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.utils.config import Config, LLMConfig, MessageBusConfig
 
@@ -66,9 +66,9 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
     assert hasattr(context, "eventbus")
 
     # Create workers (uses default agent from config)
+    # AgentWorker auto-subscribes in __init__
     messagebus_worker = MessageBusWorker(context)
-    dispatcher = AgentDispatcher(context)
-    dispatcher.subscribe()  # Register event handlers
+    AgentWorker(context)  # Creates worker that auto-subscribes to events
 
     # Track published events
     published_events: list[Event] = []

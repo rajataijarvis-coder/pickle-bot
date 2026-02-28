@@ -85,7 +85,9 @@ async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
     eventbus_task = test_context.eventbus.start()
 
     try:
-        event = make_event(agent_id="nonexistent", job_id="test-job-id", event_type=EventType.DISPATCH)
+        event = make_event(
+            agent_id="nonexistent", job_id="test-job-id", event_type=EventType.DISPATCH
+        )
         await router._dispatch_event(event)
 
         # Wait for async error result to be published
@@ -413,7 +415,12 @@ You are a test assistant.
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
 
-    event = make_event(content="hello", agent_id="test-agent", job_id="test-job-123", event_type=EventType.DISPATCH)
+    event = make_event(
+        content="hello",
+        agent_id="test-agent",
+        job_id="test-job-123",
+        event_type=EventType.DISPATCH,
+    )
 
     # Track RESULT events
     result_events: list[Event] = []

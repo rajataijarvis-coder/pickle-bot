@@ -8,7 +8,7 @@ import uvicorn
 
 from picklebot.events.delivery import DeliveryWorker
 from picklebot.server.base import Worker
-from picklebot.server.agent_worker import AgentDispatcher
+from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.cron_worker import CronWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.utils.config import ConfigReloader
@@ -49,9 +49,7 @@ class Server:
         self.config_reloader.start()
 
         self.workers.append(self.context.eventbus)
-        agent_dispatcher = AgentDispatcher(self.context)
-        agent_dispatcher.subscribe()
-
+        self.workers.append(AgentWorker(self.context))
         self.workers.append(CronWorker(self.context))
         delivery_worker = DeliveryWorker(self.context)
         delivery_worker.subscribe(self.context.eventbus)

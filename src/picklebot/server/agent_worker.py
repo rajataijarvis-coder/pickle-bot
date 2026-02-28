@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from picklebot.core.agent import Agent, SessionMode
 from picklebot.events.types import Event, EventType, Source
+from picklebot.server.base import SubscriberWorker
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 MAX_RETRIES = 3
 
 logger = logging.getLogger(__name__)
+
 
 class SessionExecutor:
     """Executes a single agent session from an event."""
@@ -68,7 +70,11 @@ class SessionExecutor:
 
             # Publish RESULT event for dispatch callers
             result_event = Event(
-                type=EventType.DISPATCH_RESULT if self.event.type == EventType.DISPATCH else EventType.OUTBOUND,
+                type=(
+                    EventType.DISPATCH_RESULT
+                    if self.event.type == EventType.DISPATCH
+                    else EventType.OUTBOUND
+                ),
                 session_id=session_id,
                 content=response,
                 source=Source.agent(self.agent_def.id),
@@ -87,7 +93,11 @@ class SessionExecutor:
             else:
                 # Publish RESULT event with error for dispatch callers
                 result_event = Event(
-                    type=EventType.DISPATCH_RESULT if self.event.type == EventType.DISPATCH else EventType.OUTBOUND,
+                    type=(
+                        EventType.DISPATCH_RESULT
+                        if self.event.type == EventType.DISPATCH
+                        else EventType.OUTBOUND
+                    ),
                     session_id=session_id,
                     content="",
                     source=Source.agent(self.agent_def.id),
@@ -97,10 +107,10 @@ class SessionExecutor:
                 await self.context.eventbus.publish(result_event)
 
 
-class AgentDispatcher:
+class AgentWorker(SubscriberWorker):
     """Dispatches events to session executors with per-agent concurrency control.
 
-    Subscribes to:
+    Auto-subscribes to:
     - INBOUND events (from platforms, cron, retries)
     - DISPATCH events (from subagent calls)
     """
@@ -108,8 +118,13 @@ class AgentDispatcher:
     CLEANUP_THRESHOLD = 5
 
     def __init__(self, context: "SharedContext"):
-        self.context = context
+        super().__init__(context)
         self._semaphores: dict[str, asyncio.Semaphore] = {}
+
+        # Auto-subscribe to events
+        self.context.eventbus.subscribe(EventType.INBOUND, self.handle_inbound)
+        self.context.eventbus.subscribe(EventType.DISPATCH, self.handle_dispatch)
+        self.logger.info("AgentWorker subscribed to INBOUND and DISPATCH events")
 
     async def handle_inbound(self, event: Event) -> None:
         """Handle INBOUND event (from platforms, cron, retries)."""
@@ -138,19 +153,6 @@ class AgentDispatcher:
             f"Dispatched job for DISPATCH event, job_id={metadata.get('job_id')}"
         )
 
-    def subscribe(self) -> None:
-        """Subscribe to INBOUND and DISPATCH events."""
-        self.context.eventbus.subscribe(EventType.INBOUND, self.handle_inbound)
-        self.context.eventbus.subscribe(EventType.DISPATCH, self.handle_dispatch)
-        logger.info(
-            "AgentDispatcher subscribed to INBOUND and DISPATCH events"
-        )
-
-    def unsubscribe(self) -> None:
-        """Unsubscribe from events."""
-        self.context.eventbus.unsubscribe(self.handle_inbound)
-        self.context.eventbus.unsubscribe(self.handle_dispatch)
-
     async def _dispatch_event(self, event: Event) -> None:
         """Create executor task for event."""
         metadata = event.metadata or {}
@@ -162,7 +164,11 @@ class AgentDispatcher:
             logger.error(f"Agent not found: {agent_id}: {e}")
             job_id = (event.metadata or {}).get("job_id", event.session_id)
             result_event = Event(
-                type=EventType.DISPATCH_RESULT if event.type == EventType.DISPATCH else EventType.OUTBOUND,
+                type=(
+                    EventType.DISPATCH_RESULT
+                    if event.type == EventType.DISPATCH
+                    else EventType.OUTBOUND
+                ),
                 session_id=event.session_id,
                 content="",
                 source="agent:dispatcher",
@@ -201,3 +207,6 @@ class AgentDispatcher:
             del self._semaphores[agent_id]
             logger.debug(f"Cleaned up semaphore for deleted agent: {agent_id}")
 
+
+# Backward compatibility alias
+AgentDispatcher = AgentWorker

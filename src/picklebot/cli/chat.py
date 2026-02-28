@@ -12,7 +12,7 @@ from rich.text import Text
 from picklebot.core.context import SharedContext
 from picklebot.events.delivery import DeliveryWorker
 from picklebot.messagebus.cli_bus import CliBus
-from picklebot.server.agent_worker import AgentDispatcher
+from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.utils.config import Config
 from picklebot.utils.logging import setup_logging
@@ -30,9 +30,9 @@ class ChatLoop:
         # Create CliBus and SharedContext with buses parameter
         self.bus = CliBus()
         self.context = SharedContext(config=config, buses=[self.bus])
-        
+
         # Create workers
-        self.dispatcher = AgentDispatcher(self.context)
+        self.agent_worker = AgentWorker(self.context)
         self.messagebus_worker = MessageBusWorker(self.context)
         self.delivery_worker = DeliveryWorker(self.context)
 
@@ -49,12 +49,11 @@ class ChatLoop:
         self.console.print("Type 'quit' or 'exit' to end the session.\n")
 
         self.delivery_worker.subscribe(self.context.eventbus)
-        self.dispatcher.subscribe()
 
         try:
             # Run workers concurrently
             # - MessageBusWorker: reads input, publishes INBOUND events
-            # - AgentDispatcher: processes INBOUND events + job queue
+            # - AgentWorker: processes INBOUND events (auto-subscribed)
             # - DeliveryWorker handles OUTBOUND events via subscription (not a task)
             await asyncio.gather(
                 self.context.eventbus.run(),
