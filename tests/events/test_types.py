@@ -1,4 +1,6 @@
 # tests/events/test_types.py
+import pytest
+
 from picklebot.core.events import (
     InboundEvent,
     OutboundEvent,
@@ -280,3 +282,15 @@ class TestEventSerialization:
         }
         event = deserialize_event(data)
         assert isinstance(event, DispatchResultEvent)
+
+    def test_deserialize_unknown_event_type_raises_error(self):
+        data = {
+            "type": "unknown_type",
+            "session_id": "sess-1",
+            "agent_id": "pickle",
+            "source": "test",
+            "content": "test",
+            "timestamp": 12345.0,
+        }
+        with pytest.raises(ValueError, match="Unknown event type"):
+            deserialize_event(data)
