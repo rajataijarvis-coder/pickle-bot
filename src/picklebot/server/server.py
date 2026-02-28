@@ -11,6 +11,7 @@ from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.cron_worker import CronWorker
 from picklebot.server.delivery_worker import DeliveryWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
+from picklebot.server.websocket_worker import WebSocketWorker
 from picklebot.utils.config import ConfigReloader
 from picklebot.api import create_app
 
@@ -45,13 +46,16 @@ class Server:
             raise
 
     def _setup_workers(self) -> None:
-        """Create all workers and subscribe event handlers."""
+        """Create all workers."""
         self.config_reloader.start()
 
-        self.workers.append(self.context.eventbus)
-        self.workers.append(AgentWorker(self.context))
-        self.workers.append(DeliveryWorker(self.context))
-        self.workers.append(CronWorker(self.context))
+        self.workers = [
+            self.context.eventbus,      # EventBus (active worker)
+            AgentWorker(self.context),  # SubscriberWorker
+            CronWorker(self.context),   # Active worker
+            DeliveryWorker(self.context),   # SubscriberWorker
+            WebSocketWorker(self.context),  # SubscriberWorker
+        ]
 
         if self.context.config.messagebus.enabled:
             buses = self.context.messagebus_buses
@@ -60,6 +64,8 @@ class Server:
                 logger.info(f"MessageBus enabled with {len(buses)} bus(es)")
             else:
                 logger.warning("MessageBus enabled but no buses configured")
+
+        logger.info(f"Server setup complete with {len(self.workers)} core workers")
 
     def _start_workers(self) -> None:
         """Start all workers as tasks."""
