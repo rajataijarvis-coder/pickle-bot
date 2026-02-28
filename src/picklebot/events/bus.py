@@ -4,7 +4,6 @@ import json
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path
 from typing import Awaitable, Callable, TYPE_CHECKING
 
 from .types import Event, EventType

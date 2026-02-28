@@ -1,7 +1,6 @@
 # tests/events/test_websocket_stub.py
 import pytest
 from unittest.mock import MagicMock
-from pathlib import Path
 
 from picklebot.server.websocket_worker import WebSocketWorker
 from picklebot.events.types import Event, EventType, Source
@@ -39,7 +38,7 @@ async def test_websocket_worker_handles_event(mock_context):
 
 
 def test_websocket_worker_subscribes_to_all_types(mock_context):
-    worker = WebSocketWorker(mock_context)
+    _ = WebSocketWorker(mock_context)  # noqa: F841 - created for side effect
 
     # WebSocketWorker auto-subscribes to all event types in __init__
     # Check subscriptions exist for all event types

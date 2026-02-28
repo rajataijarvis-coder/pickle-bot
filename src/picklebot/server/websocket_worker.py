@@ -26,7 +26,9 @@ class WebSocketWorker(SubscriberWorker):
         # Auto-subscribe to all event types
         for event_type in EventType:
             self.context.eventbus.subscribe(event_type, self.handle_event)
-        self.logger.info(f"WebSocketWorker subscribed to all {len(EventType)} event types")
+        self.logger.info(
+            f"WebSocketWorker subscribed to all {len(EventType)} event types"
+        )
 
     async def handle_event(self, event: Event) -> None:
         """Handle an event by broadcasting to WebSocket clients.

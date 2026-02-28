@@ -3,7 +3,6 @@
 import asyncio
 import json
 import pytest
-from pathlib import Path
 from picklebot.events.types import Event, EventType, Source
 
 

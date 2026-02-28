@@ -50,10 +50,10 @@ class Server:
         self.config_reloader.start()
 
         self.workers = [
-            self.context.eventbus,      # EventBus (active worker)
+            self.context.eventbus,  # EventBus (active worker)
             AgentWorker(self.context),  # SubscriberWorker
-            CronWorker(self.context),   # Active worker
-            DeliveryWorker(self.context),   # SubscriberWorker
+            CronWorker(self.context),  # Active worker
+            DeliveryWorker(self.context),  # SubscriberWorker
             WebSocketWorker(self.context),  # SubscriberWorker
         ]
 
