@@ -188,7 +188,7 @@ async def test_delivery_worker_handles_proactive_event(mock_context):
         type=EventType.OUTBOUND,
         session_id="test-uuid-1234",  # Just a UUID, platform comes from metadata
         content="Proactive message",
-        source=Source.pickle(),
+        source=Source.agent("pickle"),
         timestamp=12345.0,
         metadata={"platform": "telegram"},
     )

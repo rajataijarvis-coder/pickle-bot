@@ -19,7 +19,6 @@ class Source:
     Examples:
         Source.agent("pickle")       -> "agent:pickle"
         Source.platform("telegram", "user_123") -> "telegram:user_123"
-        Source.pickle()              -> "pickle"
     """
 
     @staticmethod
@@ -33,10 +32,9 @@ class Source:
         return f"{platform}:{user_id}"
 
     @staticmethod
-    def pickle() -> str:
-        """Create source for internal pickle-bot events (proactive messages, etc.)."""
-        return "pickle"
-
+    def cron(cron_id: str) -> str:
+        """Create source for cron-triggered events."""
+        return f"cron:{cron_id}"
 
 @dataclass
 class Event:

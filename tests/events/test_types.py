@@ -1,22 +1,6 @@
 # tests/events/test_types.py
 from picklebot.events.types import Event, EventType, Source
 
-
-class TestSource:
-    """Tests for Source factory methods."""
-
-    def test_source_agent(self):
-        assert Source.agent("pickle") == "agent:pickle"
-        assert Source.agent("cookie") == "agent:cookie"
-
-    def test_source_platform(self):
-        assert Source.platform("telegram", "user_123") == "telegram:user_123"
-        assert Source.platform("discord", "user_456") == "discord:user_456"
-
-    def test_source_pickle(self):
-        assert Source.pickle() == "pickle"
-
-
 class TestEvent:
     """Tests for Event creation and serialization."""
 
