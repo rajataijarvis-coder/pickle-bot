@@ -64,10 +64,16 @@ class SessionExecutor:
             response = await session.chat(self.job.message)
             self.logger.info(f"Session completed: {session.session_id}")
 
-            # Set result on pending future if registered
-            future = self.context.get_future(self.job.job_id)
-            if future and not future.done():
-                future.set_result(response)
+            # Publish RESULT event for dispatch callers
+            result_event = Event(
+                type=EventType.RESULT,
+                session_id=self.job.session_id,
+                content=response,
+                source=Source.agent(self.agent_def.id),
+                timestamp=time.time(),
+                metadata={"job_id": self.job.job_id},
+            )
+            await self.context.eventbus.publish(result_event)
 
         except Exception as e:
             self.logger.error(f"Session failed: {e}")
@@ -91,10 +97,16 @@ class SessionExecutor:
                 )
                 await self.context.eventbus.publish(retry_event)
             else:
-                # Set exception on pending future
-                future = self.context.get_future(self.job.job_id)
-                if future and not future.done():
-                    future.set_exception(e)
+                # Publish RESULT event with error for dispatch callers
+                result_event = Event(
+                    type=EventType.RESULT,
+                    session_id=self.job.session_id or "",
+                    content="",
+                    source=Source.agent(self.agent_def.id),
+                    timestamp=time.time(),
+                    metadata={"job_id": self.job.job_id, "error": str(e)},
+                )
+                await self.context.eventbus.publish(result_event)
 
 
 class AgentDispatcherWorker(Worker):
@@ -200,14 +212,24 @@ class AgentDispatcherWorker(Worker):
             agent_def = self.context.agent_loader.load(job.agent_id)
         except DefNotFoundError as e:
             self.logger.error(f"Agent not found: {job.agent_id}: {e}")
-            # Set exception on pending future if registered
-            future = self.context.get_future(job.job_id)
-            if future and not future.done():
-                future.set_exception(e)
+            # Publish RESULT event with error for dispatch callers
+            asyncio.create_task(self._publish_error_result(job.job_id, str(e)))
             return
 
         sem = self._get_or_create_semaphore(agent_def)
         asyncio.create_task(SessionExecutor(self.context, agent_def, job, sem).run())
+
+    async def _publish_error_result(self, job_id: str, error: str) -> None:
+        """Publish a RESULT event with error for failed dispatches."""
+        result_event = Event(
+            type=EventType.RESULT,
+            session_id="",
+            content="",
+            source="agent:dispatcher",
+            timestamp=time.time(),
+            metadata={"job_id": job_id, "error": error},
+        )
+        await self.context.eventbus.publish(result_event)
 
     def _get_or_create_semaphore(self, agent_def: "AgentDef") -> asyncio.Semaphore:
         """Get existing or create new semaphore for agent."""

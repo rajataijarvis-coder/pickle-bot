@@ -6,10 +6,11 @@ from typing import Any
 class EventType(str, Enum):
     """Types of events in the system."""
 
-    INBOUND = "inbound"  # User messages from platforms
-    OUTBOUND = "outbound"  # Agent responses to deliver
+    INBOUND = "inbound"  # External work entering the system (platforms, cron, retry)
+    OUTBOUND = "outbound"  # Agent responses to deliver to platforms
     STATUS = "status"  # Status updates
-    DISPATCH = "dispatch"  # Job dispatch requests (cron, subagent, retry)
+    DISPATCH = "dispatch"  # Internal agent-to-agent delegation
+    RESULT = "result"  # Result of a dispatched job
 
 
 class Source:

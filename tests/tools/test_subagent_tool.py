@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -105,8 +106,8 @@ You are {name}.
         assert "agent-b" not in enum_ids  # Excluded!
 
     @pytest.mark.anyio
-    async def test_tool_dispatches_via_eventbus(self, test_config):
-        """Subagent dispatch tool should dispatch through EventBus and return result."""
+    async def test_tool_dispatches_and_receives_result_via_eventbus(self, test_config):
+        """Subagent dispatch tool should dispatch via EventBus and receive RESULT."""
         # Create target agent
         agent_dir = test_config.agents_path / "target-agent"
         agent_dir.mkdir(parents=True)
@@ -129,25 +130,32 @@ You are the target agent.
         # Track dispatched events
         dispatched_events: list[Event] = []
 
-        async def capture_event(event: Event) -> None:
+        async def capture_dispatch(event: Event) -> None:
             dispatched_events.append(event)
 
-        context.eventbus.subscribe(EventType.DISPATCH, capture_event)
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Create a task that will resolve the future after event is dispatched
-        async def resolve_future():
-            # Wait for event to be dispatched
+        # Create a task that will publish RESULT after DISPATCH is received
+        async def send_result():
+            # Wait for DISPATCH event
             while not dispatched_events:
                 await asyncio.sleep(0.01)
 
-            # Get the job_id from the event and resolve the future
-            event = dispatched_events[0]
-            job_id = event.metadata.get("job_id")
-            future = context.get_future(job_id)
-            if future and not future.done():
-                future.set_result("Task completed successfully")
+            # Get the job_id and publish RESULT
+            dispatch_event = dispatched_events[0]
+            job_id = dispatch_event.metadata.get("job_id")
 
-        asyncio.create_task(resolve_future())
+            result_event = Event(
+                type=EventType.RESULT,
+                session_id="session-123",
+                content="Task completed successfully",
+                source="agent:target-agent",
+                timestamp=time.time(),
+                metadata={"job_id": job_id},
+            )
+            await context.eventbus.publish(result_event)
+
+        asyncio.create_task(send_result())
 
         # Execute
         mock_session = _make_mock_session()
@@ -155,13 +163,13 @@ You are the target agent.
             session=mock_session, agent_id="target-agent", task="Do something"
         )
 
-        # Verify event was dispatched
+        # Verify DISPATCH event was published
         assert len(dispatched_events) == 1
         event = dispatched_events[0]
         assert event.type == EventType.DISPATCH
         assert event.metadata.get("agent_id") == "target-agent"
 
-        # Verify result
+        # Verify result from RESULT event
         parsed = json.loads(result)
         assert parsed["result"] == "Task completed successfully"
         assert "session_id" in parsed
@@ -191,23 +199,30 @@ You are the target agent.
         # Track dispatched events
         dispatched_events: list[Event] = []
 
-        async def capture_event(event: Event) -> None:
+        async def capture_dispatch(event: Event) -> None:
             dispatched_events.append(event)
 
-        context.eventbus.subscribe(EventType.DISPATCH, capture_event)
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Create a task that will resolve the future
-        async def resolve_future():
+        # Create a task that will publish RESULT
+        async def send_result():
             while not dispatched_events:
                 await asyncio.sleep(0.01)
 
-            event = dispatched_events[0]
-            job_id = event.metadata.get("job_id")
-            future = context.get_future(job_id)
-            if future and not future.done():
-                future.set_result("Done")
+            dispatch_event = dispatched_events[0]
+            job_id = dispatch_event.metadata.get("job_id")
 
-        asyncio.create_task(resolve_future())
+            result_event = Event(
+                type=EventType.RESULT,
+                session_id="session-456",
+                content="Done",
+                source="agent:target-agent",
+                timestamp=time.time(),
+                metadata={"job_id": job_id},
+            )
+            await context.eventbus.publish(result_event)
+
+        asyncio.create_task(send_result())
 
         # Execute with context
         mock_session = _make_mock_session()
@@ -218,7 +233,7 @@ You are the target agent.
             context="The code is in src/main.py",
         )
 
-        # Verify context was included in event content
+        # Verify context was included in DISPATCH event content
         assert len(dispatched_events) == 1
         event = dispatched_events[0]
         assert "Review this" in event.content
@@ -228,15 +243,83 @@ You are the target agent.
     @pytest.mark.anyio
     async def test_tool_raises_for_unknown_agent(self, test_config):
         """Subagent dispatch tool should raise for unknown agent_id."""
+        # Create an agent so tool_func is not None
+        agent_dir = test_config.agents_path / "some-agent"
+        agent_dir.mkdir(parents=True)
+        agent_file = agent_dir / "AGENT.md"
+        agent_file.write_text(
+            """---
+name: Some Agent
+description: An agent
+---
+You are an agent.
+"""
+        )
+
         context = SharedContext(config=test_config)
 
         tool_func = create_subagent_dispatch_tool("caller", context)
-        # tool_func will be None when no agents exist
-        if tool_func is None:
-            return
+        assert tool_func is not None
 
         mock_session = _make_mock_session()
         with pytest.raises(ValueError, match="Agent 'unknown-agent' not found"):
             await tool_func.execute(
                 session=mock_session, agent_id="unknown-agent", task="Do something"
+            )
+
+    @pytest.mark.anyio
+    async def test_tool_raises_on_error_result(self, test_config):
+        """Subagent dispatch tool should raise when RESULT contains error."""
+        # Create target agent
+        agent_dir = test_config.agents_path / "target-agent"
+        agent_dir.mkdir(parents=True)
+        agent_file = agent_dir / "AGENT.md"
+        agent_file.write_text(
+            """---
+name: Target Agent
+description: A target for dispatch testing
+---
+
+You are the target agent.
+"""
+        )
+
+        context = SharedContext(config=test_config)
+
+        tool_func = create_subagent_dispatch_tool("caller", context)
+        assert tool_func is not None
+
+        # Track dispatched events
+        dispatched_events: list[Event] = []
+
+        async def capture_dispatch(event: Event) -> None:
+            dispatched_events.append(event)
+
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
+
+        # Create a task that will publish RESULT with error
+        async def send_error():
+            while not dispatched_events:
+                await asyncio.sleep(0.01)
+
+            dispatch_event = dispatched_events[0]
+            job_id = dispatch_event.metadata.get("job_id")
+
+            result_event = Event(
+                type=EventType.RESULT,
+                session_id="",
+                content="",
+                source="agent:target-agent",
+                timestamp=time.time(),
+                metadata={"job_id": job_id, "error": "Something went wrong"},
+            )
+            await context.eventbus.publish(result_event)
+
+        asyncio.create_task(send_error())
+
+        # Execute - should raise
+        mock_session = _make_mock_session()
+        with pytest.raises(Exception, match="Something went wrong"):
+            await tool_func.execute(
+                session=mock_session, agent_id="target-agent", task="Do something"
             )

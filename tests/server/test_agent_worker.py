@@ -50,14 +50,17 @@ You are a test assistant. Respond briefly.
 
 
 @pytest.mark.anyio
-async def test_agent_job_router_does_not_requeue_nonexistent_agent(test_context):
-    """AgentDispatcherWorker does not requeue job when agent doesn't exist."""
+async def test_agent_job_router_publishes_error_for_nonexistent_agent(test_context):
+    """AgentDispatcherWorker publishes RESULT with error when agent doesn't exist."""
     router = AgentDispatcherWorker(test_context)
 
-    # Create a future to track the error
-    loop = asyncio.get_running_loop()
-    future: asyncio.Future[str] = loop.create_future()
-    test_context.register_future("test-job-id", future)
+    # Track RESULT events
+    result_events: list[Event] = []
+
+    async def capture_result(event: Event) -> None:
+        result_events.append(event)
+
+    test_context.eventbus.subscribe(EventType.RESULT, capture_result)
 
     job = Job(
         job_id="test-job-id",
@@ -67,9 +70,16 @@ async def test_agent_job_router_does_not_requeue_nonexistent_agent(test_context)
     )
     router._dispatch_job(job)
 
-    # Future should have exception set
-    assert future.done()
-    assert future.exception() is not None
+    # Wait for async error result to be published
+    await asyncio.sleep(0.1)
+
+    # Should have published RESULT with error
+    assert len(result_events) == 1
+    result_event = result_events[0]
+    assert result_event.type == EventType.RESULT
+    assert result_event.metadata.get("job_id") == "test-job-id"
+    assert "error" in result_event.metadata
+    assert "nonexistent" in result_event.metadata["error"]
 
 
 @pytest.mark.anyio
@@ -400,13 +410,13 @@ You are agent {i}.
 
 
 # ============================================================================
-# Tests for result future and retry logic
+# Tests for RESULT event and retry logic
 # ============================================================================
 
 
 @pytest.mark.anyio
-async def test_session_executor_sets_result_on_success(test_context, tmp_path):
-    """SessionExecutor should set result on future when session succeeds."""
+async def test_session_executor_publishes_result_on_success(test_context, tmp_path):
+    """SessionExecutor should publish RESULT event when session succeeds."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -431,10 +441,13 @@ You are a test assistant.
         mode=SessionMode.CHAT,
     )
 
-    # Register a future for this job
-    loop = asyncio.get_running_loop()
-    future: asyncio.Future[str] = loop.create_future()
-    test_context.register_future(job.job_id, future)
+    # Track RESULT events
+    result_events: list[Event] = []
+
+    async def capture_result(event: Event) -> None:
+        result_events.append(event)
+
+    test_context.eventbus.subscribe(EventType.RESULT, capture_result)
 
     with patch("picklebot.server.agent_worker.Agent") as MockAgent:
         mock_session = AsyncMock()
@@ -448,8 +461,11 @@ You are a test assistant.
         executor = SessionExecutor(test_context, agent_def, job, semaphore)
         await executor.run()
 
-    assert future.done()
-    assert future.result() == "response text"
+    assert len(result_events) == 1
+    result_event = result_events[0]
+    assert result_event.type == EventType.RESULT
+    assert result_event.content == "response text"
+    assert result_event.metadata.get("job_id") == job.job_id
 
 
 @pytest.mark.anyio
@@ -504,10 +520,10 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_session_executor_sets_exception_after_max_retries(
+async def test_session_executor_publishes_result_with_error_after_max_retries(
     test_context, tmp_path
 ):
-    """SessionExecutor should set exception after MAX_RETRIES failures."""
+    """SessionExecutor should publish RESULT event with error after MAX_RETRIES failures."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -533,10 +549,13 @@ You are a test assistant.
         retry_count=MAX_RETRIES,  # Already at max
     )
 
-    # Register a future for this job
-    loop = asyncio.get_running_loop()
-    future: asyncio.Future[str] = loop.create_future()
-    test_context.register_future(job.job_id, future)
+    # Track RESULT events
+    result_events: list[Event] = []
+
+    async def capture_result(event: Event) -> None:
+        result_events.append(event)
+
+    test_context.eventbus.subscribe(EventType.RESULT, capture_result)
 
     with patch("picklebot.server.agent_worker.Agent") as MockAgent:
         MockAgent.side_effect = Exception("final boom")
@@ -544,9 +563,12 @@ You are a test assistant.
         executor = SessionExecutor(test_context, agent_def, job, semaphore)
         await executor.run()
 
-    assert future.done()
-    assert isinstance(future.exception(), Exception)
-    assert str(future.exception()) == "final boom"
+    assert len(result_events) == 1
+    result_event = result_events[0]
+    assert result_event.type == EventType.RESULT
+    assert result_event.metadata.get("job_id") == job.job_id
+    assert "error" in result_event.metadata
+    assert result_event.metadata["error"] == "final boom"
 
 
 # ============================================================================

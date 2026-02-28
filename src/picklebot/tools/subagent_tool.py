@@ -22,9 +22,8 @@ def create_subagent_dispatch_tool(
     """Factory to create subagent dispatch tool with dynamic schema.
 
     Args:
-        agent_loader: AgentLoader instance for discovering and loading agents
         current_agent_id: ID of the calling agent (will be excluded from enum)
-        context: SharedContext for creating subagents
+        context: SharedContext for event bus access
 
     Returns:
         Async tool function for dispatching to subagents, or None if no agents available
@@ -95,29 +94,44 @@ def create_subagent_dispatch_tool(
         if context:
             user_message = f"{task}\n\nContext:\n{context}"
 
-        # Create job_id and register future for result
+        # Create job_id and local future for result
         job_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         result_future: asyncio.Future[str] = loop.create_future()
-        shared_context.register_future(job_id, result_future)
 
-        # Publish DISPATCH event
-        event = Event(
-            type=EventType.DISPATCH,
-            session_id=job_id,
-            content=user_message,
-            source=Source.agent(current_agent_id),
-            timestamp=time.time(),
-            metadata={
-                "job_id": job_id,
-                "agent_id": agent_id,
-                "mode": SessionMode.JOB.value,
-            },
-        )
-        await shared_context.eventbus.publish(event)
+        # Create temp handler that filters by job_id
+        async def handle_result(event: Event) -> None:
+            if event.metadata.get("job_id") == job_id:
+                if not result_future.done():
+                    if "error" in event.metadata:
+                        result_future.set_exception(Exception(event.metadata["error"]))
+                    else:
+                        result_future.set_result(event.content)
 
-        # Wait for result
-        response = await result_future
+        # Subscribe to RESULT events
+        shared_context.eventbus.subscribe(EventType.RESULT, handle_result)
+
+        try:
+            # Publish DISPATCH event
+            event = Event(
+                type=EventType.DISPATCH,
+                session_id=job_id,
+                content=user_message,
+                source=Source.agent(current_agent_id),
+                timestamp=time.time(),
+                metadata={
+                    "job_id": job_id,
+                    "agent_id": agent_id,
+                    "mode": SessionMode.JOB.value,
+                },
+            )
+            await shared_context.eventbus.publish(event)
+
+            # Wait for result
+            response = await result_future
+        finally:
+            # Always unsubscribe
+            shared_context.eventbus.unsubscribe(handle_result)
 
         result = {"result": response, "session_id": job_id}
         return json.dumps(result)

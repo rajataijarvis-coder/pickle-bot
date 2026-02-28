@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 from picklebot.core.agent_loader import AgentLoader
@@ -22,8 +21,6 @@ class SharedContext:
     command_registry: CommandRegistry
     messagebus_buses: list[MessageBus[Any]]
     eventbus: EventBus
-    # Futures for pending jobs (keyed by job_id)
-    _pending_futures: dict[str, asyncio.Future[str]]
 
     def __init__(
         self, config: Config, buses: list[MessageBus[Any]] | None = None
@@ -42,12 +39,3 @@ class SharedContext:
             self.messagebus_buses = MessageBus.from_config(config)
 
         self.eventbus = EventBus()
-        self._pending_futures = {}
-
-    def register_future(self, job_id: str, future: asyncio.Future[str]) -> None:
-        """Register a future for a pending job."""
-        self._pending_futures[job_id] = future
-
-    def get_future(self, job_id: str) -> asyncio.Future[str] | None:
-        """Get and remove a future for a completed job."""
-        return self._pending_futures.pop(job_id, None)
