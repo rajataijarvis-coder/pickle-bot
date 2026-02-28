@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from picklebot.messagebus.base import MessageContext
+
 
 class EventType(str, Enum):
     """Types of events in the system."""
@@ -46,6 +48,49 @@ class Source:
         return "retry"
 
 
+def _serialize_context(context: MessageContext | None) -> dict[str, Any] | None:
+    """Serialize a MessageContext to a dictionary."""
+    if context is None:
+        return None
+
+    # Get the class name to identify the context type
+    context_type = type(context).__name__
+
+    # Extract dataclass fields if it's a dataclass
+    if hasattr(context, "__dataclass_fields__"):
+        data = {}
+        for field_name in context.__dataclass_fields__:
+            data[field_name] = getattr(context, field_name)
+        return {"type": context_type, "data": data}
+
+    return {"type": context_type, "data": {}}
+
+
+def _deserialize_context(data: dict[str, Any] | None) -> MessageContext | None:
+    """Deserialize a dictionary back to a MessageContext."""
+    if data is None:
+        return None
+
+    context_type = data.get("type")
+    context_data = data.get("data", {})
+
+    # Import here to avoid circular imports
+    if context_type == "TelegramContext":
+        from picklebot.messagebus.telegram_bus import TelegramContext
+
+        return TelegramContext(**context_data)
+    elif context_type == "DiscordContext":
+        from picklebot.messagebus.discord_bus import DiscordContext
+
+        return DiscordContext(**context_data)
+    elif context_type == "CliContext":
+        from picklebot.messagebus.cli_bus import CliContext
+
+        return CliContext(**context_data)
+
+    return None
+
+
 @dataclass
 class Event:
     """Platform-agnostic event."""
@@ -78,4 +123,154 @@ class Event:
             source=data["source"],
             timestamp=data["timestamp"],
             metadata=data.get("metadata", {}),
+        )
+
+
+@dataclass
+class InboundEvent:
+    """Event for external work entering the system (platforms, cron, retry)."""
+
+    session_id: str
+    agent_id: str
+    source: str
+    content: str
+    timestamp: float
+    retry_count: int = 0
+    context: MessageContext | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize event to dictionary."""
+        return {
+            "type": "inbound",
+            "session_id": self.session_id,
+            "agent_id": self.agent_id,
+            "source": self.source,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "retry_count": self.retry_count,
+            "context": _serialize_context(self.context),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "InboundEvent":
+        """Deserialize event from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            agent_id=data["agent_id"],
+            source=data["source"],
+            content=data["content"],
+            timestamp=data["timestamp"],
+            retry_count=data.get("retry_count", 0),
+            context=_deserialize_context(data.get("context")),
+        )
+
+
+@dataclass
+class OutboundEvent:
+    """Event for agent responses to deliver to platforms."""
+
+    session_id: str
+    agent_id: str
+    source: str
+    content: str
+    timestamp: float
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize event to dictionary."""
+        return {
+            "type": "outbound",
+            "session_id": self.session_id,
+            "agent_id": self.agent_id,
+            "source": self.source,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "OutboundEvent":
+        """Deserialize event from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            agent_id=data["agent_id"],
+            source=data["source"],
+            content=data["content"],
+            timestamp=data["timestamp"],
+            error=data.get("error"),
+        )
+
+
+@dataclass
+class DispatchEvent:
+    """Event for internal agent-to-agent delegation."""
+
+    session_id: str
+    agent_id: str
+    source: str
+    content: str
+    timestamp: float
+    parent_session_id: str
+    retry_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize event to dictionary."""
+        return {
+            "type": "dispatch",
+            "session_id": self.session_id,
+            "agent_id": self.agent_id,
+            "source": self.source,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "parent_session_id": self.parent_session_id,
+            "retry_count": self.retry_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DispatchEvent":
+        """Deserialize event from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            agent_id=data["agent_id"],
+            source=data["source"],
+            content=data["content"],
+            timestamp=data["timestamp"],
+            parent_session_id=data["parent_session_id"],
+            retry_count=data.get("retry_count", 0),
+        )
+
+
+@dataclass
+class DispatchResultEvent:
+    """Event for result of a dispatched job."""
+
+    session_id: str
+    agent_id: str
+    source: str
+    content: str
+    timestamp: float
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize event to dictionary."""
+        return {
+            "type": "dispatch_result",
+            "session_id": self.session_id,
+            "agent_id": self.agent_id,
+            "source": self.source,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DispatchResultEvent":
+        """Deserialize event from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            agent_id=data["agent_id"],
+            source=data["source"],
+            content=data["content"],
+            timestamp=data["timestamp"],
+            error=data.get("error"),
         )

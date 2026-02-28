@@ -1,65 +1,206 @@
 # tests/events/test_types.py
-from picklebot.core.events import Event, EventType, Source
+from picklebot.core.events import (
+    InboundEvent,
+    OutboundEvent,
+    DispatchEvent,
+    DispatchResultEvent,
+    EventType,
+    Source,
+)
+from picklebot.messagebus.telegram_bus import TelegramContext
 
 
-class TestEvent:
-    """Tests for Event creation and serialization."""
+class TestInboundEvent:
+    """Tests for InboundEvent."""
 
-    def test_event_creation(self):
-        event = Event(
-            type=EventType.OUTBOUND,
-            session_id="test-session",
-            content="Hello world",
-            source=Source.agent("pickle"),
-            timestamp=12345.0,
-            metadata={"agent_id": "pickle"},
-        )
-        assert event.type == EventType.OUTBOUND
-        assert event.session_id == "test-session"
-        assert event.content == "Hello world"
-        assert event.source == "agent:pickle"
-        assert event.timestamp == 12345.0
-        assert event.metadata == {"agent_id": "pickle"}
-
-    def test_event_default_metadata(self):
-        event = Event(
-            type=EventType.INBOUND,
-            session_id="test-session",
-            content="Hi",
-            source=Source.platform("telegram", "user_123"),
-            timestamp=12345.0,
-        )
-        assert event.metadata == {}
-
-    def test_event_to_dict(self):
-        event = Event(
-            type=EventType.OUTBOUND,
-            session_id="test-session",
+    def test_inbound_event_creation(self):
+        ctx = TelegramContext(user_id="123", chat_id="456")
+        event = InboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="telegram:123",
             content="Hello",
-            source=Source.agent("pickle"),
             timestamp=12345.0,
-            metadata={"key": "value"},
+            retry_count=0,
+            context=ctx,
+        )
+        assert event.session_id == "sess-1"
+        assert event.agent_id == "pickle"
+        assert event.source == "telegram:123"
+        assert event.content == "Hello"
+        assert event.timestamp == 12345.0
+        assert event.retry_count == 0
+        assert event.context == ctx
+
+    def test_inbound_event_defaults(self):
+        event = InboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="cli:cli-user",
+            content="Hi",
+            timestamp=12345.0,
+        )
+        assert event.retry_count == 0
+        assert event.context is None
+
+    def test_inbound_event_to_dict(self):
+        ctx = TelegramContext(user_id="123", chat_id="456")
+        event = InboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="telegram:123",
+            content="Hello",
+            timestamp=12345.0,
+            context=ctx,
         )
         result = event.to_dict()
-        assert result == {
-            "type": "outbound",
-            "session_id": "test-session",
-            "content": "Hello",
-            "source": "agent:pickle",
-            "timestamp": 12345.0,
-            "metadata": {"key": "value"},
-        }
+        assert result["type"] == "inbound"
+        assert result["session_id"] == "sess-1"
+        assert result["agent_id"] == "pickle"
+        assert result["context"]["type"] == "TelegramContext"
 
-    def test_event_from_dict(self):
+    def test_inbound_event_from_dict(self):
         data = {
-            "type": "outbound",
-            "session_id": "test-session",
+            "type": "inbound",
+            "session_id": "sess-1",
+            "agent_id": "pickle",
+            "source": "telegram:123",
             "content": "Hello",
-            "source": "agent:pickle",
             "timestamp": 12345.0,
-            "metadata": {"key": "value"},
+            "retry_count": 1,
+            "context": {
+                "type": "TelegramContext",
+                "data": {"user_id": "123", "chat_id": "456"},
+            },
         }
-        event = Event.from_dict(data)
-        assert event.type == EventType.OUTBOUND
-        assert event.session_id == "test-session"
-        assert event.content == "Hello"
+        event = InboundEvent.from_dict(data)
+        assert event.session_id == "sess-1"
+        assert event.agent_id == "pickle"
+        assert isinstance(event.context, TelegramContext)
+        assert event.context.chat_id == "456"
+
+
+class TestOutboundEvent:
+    """Tests for OutboundEvent."""
+
+    def test_outbound_event_creation(self):
+        event = OutboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="agent:pickle",
+            content="Response",
+            timestamp=12345.0,
+        )
+        assert event.session_id == "sess-1"
+        assert event.agent_id == "pickle"
+        assert event.error is None
+
+    def test_outbound_event_with_error(self):
+        event = OutboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="agent:pickle",
+            content="",
+            timestamp=12345.0,
+            error="Something failed",
+        )
+        assert event.error == "Something failed"
+
+    def test_outbound_event_serialization(self):
+        event = OutboundEvent(
+            session_id="sess-1",
+            agent_id="pickle",
+            source="agent:pickle",
+            content="Response",
+            timestamp=12345.0,
+            error="test error",
+        )
+        data = event.to_dict()
+        assert data["type"] == "outbound"
+        assert data["error"] == "test error"
+
+        restored = OutboundEvent.from_dict(data)
+        assert restored.error == "test error"
+
+
+class TestDispatchEvent:
+    """Tests for DispatchEvent."""
+
+    def test_dispatch_event_creation(self):
+        event = DispatchEvent(
+            session_id="job-1",
+            agent_id="cookie",
+            source="agent:pickle",
+            content="Remember this",
+            timestamp=12345.0,
+            retry_count=0,
+            parent_session_id="parent-sess-1",
+        )
+        assert event.session_id == "job-1"
+        assert event.agent_id == "cookie"
+        assert event.parent_session_id == "parent-sess-1"
+
+    def test_dispatch_event_serialization(self):
+        event = DispatchEvent(
+            session_id="job-1",
+            agent_id="cookie",
+            source="agent:pickle",
+            content="Task",
+            timestamp=12345.0,
+            parent_session_id="parent-1",
+        )
+        data = event.to_dict()
+        assert data["type"] == "dispatch"
+        assert data["parent_session_id"] == "parent-1"
+
+        restored = DispatchEvent.from_dict(data)
+        assert restored.parent_session_id == "parent-1"
+
+
+class TestDispatchResultEvent:
+    """Tests for DispatchResultEvent."""
+
+    def test_dispatch_result_event_creation(self):
+        event = DispatchResultEvent(
+            session_id="job-1",
+            agent_id="cookie",
+            source="agent:cookie",
+            content="Done",
+            timestamp=12345.0,
+        )
+        assert event.session_id == "job-1"
+        assert event.error is None
+
+    def test_dispatch_result_event_with_error(self):
+        event = DispatchResultEvent(
+            session_id="job-1",
+            agent_id="cookie",
+            source="agent:cookie",
+            content="",
+            timestamp=12345.0,
+            error="Failed",
+        )
+        assert event.error == "Failed"
+
+
+class TestEventTypeEnum:
+    """Tests for EventType enum (still needed for serialization)."""
+
+    def test_event_type_values(self):
+        assert EventType.INBOUND.value == "inbound"
+        assert EventType.OUTBOUND.value == "outbound"
+        assert EventType.DISPATCH.value == "dispatch"
+        assert EventType.DISPATCH_RESULT.value == "dispatch_result"
+
+
+class TestSource:
+    """Tests for Source factory methods."""
+
+    def test_source_agent(self):
+        assert Source.agent("pickle") == "agent:pickle"
+
+    def test_source_platform(self):
+        assert Source.platform("telegram", "user_123") == "telegram:user_123"
+
+    def test_source_cron(self):
+        assert Source.cron("daily") == "cron:daily"
