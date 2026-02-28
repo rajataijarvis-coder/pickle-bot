@@ -135,44 +135,54 @@ You are the target agent.
 
         context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Create a task that will publish RESULT after DISPATCH is received
-        async def send_result():
-            # Wait for DISPATCH event
-            while not dispatched_events:
-                await asyncio.sleep(0.01)
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
 
-            # Get the job_id and publish RESULT
-            dispatch_event = dispatched_events[0]
-            job_id = dispatch_event.metadata.get("job_id")
+        try:
+            # Create a task that will publish RESULT after DISPATCH is received
+            async def send_result():
+                # Wait for DISPATCH event
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
 
-            result_event = Event(
-                type=EventType.DISPATCH_RESULT,
-                session_id="session-123",
-                content="Task completed successfully",
-                source="agent:target-agent",
-                timestamp=time.time(),
-                metadata={"job_id": job_id},
+                # Get the job_id and publish RESULT
+                dispatch_event = dispatched_events[0]
+                job_id = dispatch_event.metadata.get("job_id")
+
+                result_event = Event(
+                    type=EventType.DISPATCH_RESULT,
+                    session_id="session-123",
+                    content="Task completed successfully",
+                    source="agent:target-agent",
+                    timestamp=time.time(),
+                    metadata={"job_id": job_id},
+                )
+                await context.eventbus.publish(result_event)
+
+            asyncio.create_task(send_result())
+
+            # Execute
+            mock_session = _make_mock_session()
+            result = await tool_func.execute(
+                session=mock_session, agent_id="target-agent", task="Do something"
             )
-            await context.eventbus.publish(result_event)
 
-        asyncio.create_task(send_result())
+            # Verify DISPATCH event was published
+            assert len(dispatched_events) == 1
+            event = dispatched_events[0]
+            assert event.type == EventType.DISPATCH
+            assert event.metadata.get("agent_id") == "target-agent"
 
-        # Execute
-        mock_session = _make_mock_session()
-        result = await tool_func.execute(
-            session=mock_session, agent_id="target-agent", task="Do something"
-        )
-
-        # Verify DISPATCH event was published
-        assert len(dispatched_events) == 1
-        event = dispatched_events[0]
-        assert event.type == EventType.DISPATCH
-        assert event.metadata.get("agent_id") == "target-agent"
-
-        # Verify result from RESULT event
-        parsed = json.loads(result)
-        assert parsed["result"] == "Task completed successfully"
-        assert "session_id" in parsed
+            # Verify result from RESULT event
+            parsed = json.loads(result)
+            assert parsed["result"] == "Task completed successfully"
+            assert "session_id" in parsed
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.anyio
     async def test_tool_includes_context_in_message(self, test_config):
@@ -204,41 +214,51 @@ You are the target agent.
 
         context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Create a task that will publish RESULT
-        async def send_result():
-            while not dispatched_events:
-                await asyncio.sleep(0.01)
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
 
-            dispatch_event = dispatched_events[0]
-            job_id = dispatch_event.metadata.get("job_id")
+        try:
+            # Create a task that will publish RESULT
+            async def send_result():
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
 
-            result_event = Event(
-                type=EventType.DISPATCH_RESULT,
-                session_id="session-456",
-                content="Done",
-                source="agent:target-agent",
-                timestamp=time.time(),
-                metadata={"job_id": job_id},
+                dispatch_event = dispatched_events[0]
+                job_id = dispatch_event.metadata.get("job_id")
+
+                result_event = Event(
+                    type=EventType.DISPATCH_RESULT,
+                    session_id="session-456",
+                    content="Done",
+                    source="agent:target-agent",
+                    timestamp=time.time(),
+                    metadata={"job_id": job_id},
+                )
+                await context.eventbus.publish(result_event)
+
+            asyncio.create_task(send_result())
+
+            # Execute with context
+            mock_session = _make_mock_session()
+            await tool_func.execute(
+                session=mock_session,
+                agent_id="target-agent",
+                task="Review this",
+                context="The code is in src/main.py",
             )
-            await context.eventbus.publish(result_event)
 
-        asyncio.create_task(send_result())
-
-        # Execute with context
-        mock_session = _make_mock_session()
-        await tool_func.execute(
-            session=mock_session,
-            agent_id="target-agent",
-            task="Review this",
-            context="The code is in src/main.py",
-        )
-
-        # Verify context was included in DISPATCH event content
-        assert len(dispatched_events) == 1
-        event = dispatched_events[0]
-        assert "Review this" in event.content
-        assert "Context:" in event.content
-        assert "The code is in src/main.py" in event.content
+            # Verify context was included in DISPATCH event content
+            assert len(dispatched_events) == 1
+            event = dispatched_events[0]
+            assert "Review this" in event.content
+            assert "Context:" in event.content
+            assert "The code is in src/main.py" in event.content
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.anyio
     async def test_tool_raises_for_unknown_agent(self, test_config):
@@ -297,29 +317,39 @@ You are the target agent.
 
         context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Create a task that will publish RESULT with error
-        async def send_error():
-            while not dispatched_events:
-                await asyncio.sleep(0.01)
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
 
-            dispatch_event = dispatched_events[0]
-            job_id = dispatch_event.metadata.get("job_id")
+        try:
+            # Create a task that will publish RESULT with error
+            async def send_error():
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
 
-            result_event = Event(
-                type=EventType.DISPATCH_RESULT,
-                session_id="",
-                content="",
-                source="agent:target-agent",
-                timestamp=time.time(),
-                metadata={"job_id": job_id, "error": "Something went wrong"},
-            )
-            await context.eventbus.publish(result_event)
+                dispatch_event = dispatched_events[0]
+                job_id = dispatch_event.metadata.get("job_id")
 
-        asyncio.create_task(send_error())
+                result_event = Event(
+                    type=EventType.DISPATCH_RESULT,
+                    session_id="",
+                    content="",
+                    source="agent:target-agent",
+                    timestamp=time.time(),
+                    metadata={"job_id": job_id, "error": "Something went wrong"},
+                )
+                await context.eventbus.publish(result_event)
 
-        # Execute - should raise
-        mock_session = _make_mock_session()
-        with pytest.raises(Exception, match="Something went wrong"):
-            await tool_func.execute(
-                session=mock_session, agent_id="target-agent", task="Do something"
-            )
+            asyncio.create_task(send_error())
+
+            # Execute - should raise
+            mock_session = _make_mock_session()
+            with pytest.raises(Exception, match="Something went wrong"):
+                await tool_func.execute(
+                    session=mock_session, agent_id="target-agent", task="Do something"
+                )
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass

@@ -46,11 +46,14 @@ class Server:
 
     def _setup_workers(self) -> None:
         """Create all workers and subscribe event handlers."""
-        # Create AgentDispatcherWorker (handles INBOUND events + job queue)
+        # Add EventBus as first worker (processes event queue, runs recovery)
+        self.workers.append(self.context.eventbus)
+
+        # Create AgentDispatcherWorker (handles INBOUND and DISPATCH events)
         self.agent_worker = AgentDispatcherWorker(self.context)
         self.workers.append(self.agent_worker)
         self.agent_worker.subscribe()
-        logger.info("AgentDispatcherWorker subscribed to INBOUND events")
+        logger.info("AgentDispatcherWorker subscribed to INBOUND and DISPATCH events")
 
         self.workers.append(CronWorker(self.context))
         self.config_reloader.start()

@@ -81,19 +81,29 @@ async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
 
     test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
 
-    event = make_event(agent_id="nonexistent", job_id="test-job-id")
-    router._dispatch_event(event)
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Wait for async error result to be published
-    await asyncio.sleep(0.1)
+    try:
+        event = make_event(agent_id="nonexistent", job_id="test-job-id")
+        router._dispatch_event(event)
 
-    # Should have published RESULT with error
-    assert len(result_events) == 1
-    result_event = result_events[0]
-    assert result_event.type == EventType.DISPATCH_RESULT
-    assert result_event.metadata.get("job_id") == "test-job-id"
-    assert "error" in result_event.metadata
-    assert "nonexistent" in result_event.metadata["error"]
+        # Wait for async error result to be published
+        await asyncio.sleep(0.1)
+
+        # Should have published RESULT with error
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert result_event.type == EventType.DISPATCH_RESULT
+        assert result_event.metadata.get("job_id") == "test-job-id"
+        assert "error" in result_event.metadata
+        assert "nonexistent" in result_event.metadata["error"]
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -127,17 +137,30 @@ You are a test assistant.
 
     test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    executor = SessionExecutor(test_context, agent_def, event, semaphore)
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Mock the Agent to raise an error
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        MockAgent.side_effect = RuntimeError("Transient error")
-        await executor.run()
+    try:
+        executor = SessionExecutor(test_context, agent_def, event, semaphore)
 
-    assert len(inbound_events) == 1
-    assert inbound_events[0].type == EventType.INBOUND
-    assert inbound_events[0].metadata is not None
-    assert inbound_events[0].metadata["retry_count"] == 1
+        # Mock the Agent to raise an error
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = RuntimeError("Transient error")
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(inbound_events) == 1
+        assert inbound_events[0].type == EventType.INBOUND
+        assert inbound_events[0].metadata is not None
+        assert inbound_events[0].metadata["retry_count"] == 1
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -400,23 +423,36 @@ You are a test assistant.
 
     test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        mock_session = AsyncMock()
-        mock_session.chat = AsyncMock(return_value="response text")
-        mock_session.session_id = "session-123"
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-        mock_agent = MagicMock()
-        mock_agent.new_session.return_value = mock_session
-        MockAgent.return_value = mock_agent
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            mock_session = AsyncMock()
+            mock_session.chat = AsyncMock(return_value="response text")
+            mock_session.session_id = "session-123"
 
-        executor = SessionExecutor(test_context, agent_def, event, semaphore)
-        await executor.run()
+            mock_agent = MagicMock()
+            mock_agent.new_session.return_value = mock_session
+            MockAgent.return_value = mock_agent
 
-    assert len(result_events) == 1
-    result_event = result_events[0]
-    assert result_event.type == EventType.DISPATCH_RESULT
-    assert result_event.content == "response text"
-    assert result_event.metadata.get("job_id") == "test-job-123"
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert result_event.type == EventType.DISPATCH_RESULT
+        assert result_event.content == "response text"
+        assert result_event.metadata.get("job_id") == "test-job-123"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -450,19 +486,32 @@ You are a test assistant.
 
     test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        MockAgent.side_effect = Exception("boom")
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-        executor = SessionExecutor(test_context, agent_def, event, semaphore)
-        await executor.run()
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = Exception("boom")
 
-    # Should be requeued via INBOUND event
-    assert len(inbound_events) == 1
-    retry_event = inbound_events[0]
-    assert retry_event.type == EventType.INBOUND
-    assert retry_event.metadata is not None
-    assert retry_event.metadata["retry_count"] == 1
-    assert retry_event.content == "."
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        # Should be requeued via INBOUND event
+        assert len(inbound_events) == 1
+        retry_event = inbound_events[0]
+        assert retry_event.type == EventType.INBOUND
+        assert retry_event.metadata is not None
+        assert retry_event.metadata["retry_count"] == 1
+        assert retry_event.content == "."
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -503,18 +552,31 @@ You are a test assistant.
 
     test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        MockAgent.side_effect = Exception("final boom")
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-        executor = SessionExecutor(test_context, agent_def, event, semaphore)
-        await executor.run()
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = Exception("final boom")
 
-    assert len(result_events) == 1
-    result_event = result_events[0]
-    assert result_event.type == EventType.DISPATCH_RESULT
-    assert result_event.metadata.get("job_id") == "job-456"
-    assert "error" in result_event.metadata
-    assert result_event.metadata["error"] == "final boom"
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert result_event.type == EventType.DISPATCH_RESULT
+        assert result_event.metadata.get("job_id") == "job-456"
+        assert "error" in result_event.metadata
+        assert result_event.metadata["error"] == "final boom"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 # ============================================================================

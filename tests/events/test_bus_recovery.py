@@ -41,15 +41,22 @@ async def test_recover_republishes_pending_events(temp_events_dir):
     bus = EventBus(events_dir=temp_events_dir)
     bus.subscribe(EventType.OUTBOUND, handler)
 
-    # Recover
-    await bus.recover()
+    # Start EventBus worker (which runs recovery on startup)
+    eventbus_task = bus.start()
 
-    # Allow async tasks
-    await asyncio.sleep(0.1)
+    try:
+        # Allow recovery to complete
+        await asyncio.sleep(0.1)
 
-    # Event should have been republished
-    assert len(received) == 1
-    assert received[0].session_id == "test-session"
+        # Event should have been recovered and dispatched
+        assert len(received) == 1
+        assert received[0].session_id == "test-session"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -63,8 +70,16 @@ async def test_recover_empty_pending_dir(temp_events_dir):
 
     bus.subscribe(EventType.OUTBOUND, handler)
 
-    await bus.recover()
+    # Start EventBus worker (which runs recovery on startup)
+    eventbus_task = bus.start()
 
-    await asyncio.sleep(0.1)
+    try:
+        await asyncio.sleep(0.1)
 
-    assert len(received) == 0
+        assert len(received) == 0
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass

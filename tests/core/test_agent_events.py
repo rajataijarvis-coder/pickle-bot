@@ -1,5 +1,6 @@
 """Tests for Agent event publishing."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -62,26 +63,40 @@ async def test_chat_publishes_outbound_event(
 
     mock_context.eventbus.subscribe(EventType.OUTBOUND, capture_event)
 
-    # Mock the LLM to return a response
-    with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
-        mock_llm_chat.return_value = ("Hello! How can I help you?", [])
+    # Start EventBus worker to process events
+    eventbus_task = mock_context.eventbus.start()
 
-        # Call chat
-        response = await session.chat("Hi")
+    try:
+        # Mock the LLM to return a response
+        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+            mock_llm_chat.return_value = ("Hello! How can I help you?", [])
 
-    # Verify response
-    assert response == "Hello! How can I help you?"
+            # Call chat
+            response = await session.chat("Hi")
 
-    # Verify OUTBOUND event was published
-    assert len(published_events) == 1
-    event = published_events[0]
+        # Wait for event to be processed
+        await asyncio.sleep(0.1)
 
-    assert event.type == EventType.OUTBOUND
-    assert event.session_id == session.session_id
-    assert event.content == "Hello! How can I help you?"
-    assert event.source == f"agent:{mock_agent.agent_def.id}"
-    assert event.timestamp is not None
-    assert event.metadata.get("agent_id") == mock_agent.agent_def.id
+        # Verify response
+        assert response == "Hello! How can I help you?"
+
+        # Verify OUTBOUND event was published
+        assert len(published_events) == 1
+        event = published_events[0]
+
+        assert event.type == EventType.OUTBOUND
+        assert event.session_id == session.session_id
+        assert event.content == "Hello! How can I help you?"
+        assert event.source == f"agent:{mock_agent.agent_def.id}"
+        assert event.timestamp is not None
+        assert event.metadata.get("agent_id") == mock_agent.agent_def.id
+
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -98,20 +113,33 @@ async def test_chat_event_has_valid_timestamp(
 
     mock_context.eventbus.subscribe(EventType.OUTBOUND, capture_event)
 
-    before_time = time.time()
+    # Start EventBus worker
+    eventbus_task = mock_context.eventbus.start()
 
-    with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
-        mock_llm_chat.return_value = ("Response", [])
+    try:
+        before_time = time.time()
 
-        await session.chat("Test")
+        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+            mock_llm_chat.return_value = ("Response", [])
 
-    after_time = time.time()
+            await session.chat("Test")
 
-    assert len(published_events) == 1
-    event = published_events[0]
+        await asyncio.sleep(0.1)
 
-    # Timestamp should be between before and after
-    assert before_time <= event.timestamp <= after_time
+        after_time = time.time()
+
+        assert len(published_events) == 1
+        event = published_events[0]
+
+        # Timestamp should be between before and after
+        assert before_time <= event.timestamp <= after_time
+
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -130,67 +158,90 @@ async def test_chat_with_tool_calls_publishes_outbound_event(
 
     mock_context.eventbus.subscribe(EventType.OUTBOUND, capture_event)
 
-    # Mock LLM to first return tool call, then final response
-    tool_call = LLMToolCall(
-        id="call-1", name="read_file", arguments='{"path": "/tmp/test.txt"}'
-    )
+    # Start EventBus worker
+    eventbus_task = mock_context.eventbus.start()
 
-    call_count = 0
+    try:
+        # Mock LLM to first return tool call, then final response
+        tool_call = LLMToolCall(
+            id="call-1", name="read_file", arguments='{"path": "/tmp/test.txt"}'
+        )
 
-    async def mock_chat_response(messages, tool_schemas):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return ("Let me read that file.", [tool_call])
-        else:
-            return ("The file contains test data.", [])
+        call_count = 0
 
-    with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
-        mock_llm_chat.side_effect = mock_chat_response
+        async def mock_chat_response(messages, tool_schemas):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return ("Let me read that file.", [tool_call])
+            else:
+                return ("The file contains test data.", [])
 
-        # Mock the tool execution
-        with patch.object(
-            session.tools, "execute_tool", new_callable=AsyncMock
-        ) as mock_execute:
-            mock_execute.return_value = "File content: test data"
+        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+            mock_llm_chat.side_effect = mock_chat_response
 
-            response = await session.chat("What's in the file?")
+            # Mock the tool execution
+            with patch.object(
+                session.tools, "execute_tool", new_callable=AsyncMock
+            ) as mock_execute:
+                mock_execute.return_value = "File content: test data"
 
-    # Verify final response
-    assert response == "The file contains test data."
+                response = await session.chat("What's in the file?")
 
-    # Verify only one OUTBOUND event was published (for the final response)
-    assert len(published_events) == 1
-    event = published_events[0]
+        await asyncio.sleep(0.1)
 
-    assert event.type == EventType.OUTBOUND
-    assert event.content == "The file contains test data."
-    assert event.source == f"agent:{mock_agent.agent_def.id}"
+        # Verify final response
+        assert response == "The file contains test data."
+
+        # Verify only one OUTBOUND event was published (for the final response)
+        assert len(published_events) == 1
+        event = published_events[0]
+
+        assert event.type == EventType.OUTBOUND
+        assert event.content == "The file contains test data."
+        assert event.source == f"agent:{mock_agent.agent_def.id}"
+
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
-async def test_chat_returns_content_after_publishing_event(
+async def test_chat_event_published_after_response(
     mock_agent: Agent, mock_context: SharedContext
 ):
-    """AgentSession.chat should return content after publishing the event."""
+    """AgentSession.chat should publish event (may be after return with queue)."""
     session = mock_agent.new_session(SessionMode.CHAT)
 
-    event_publish_order = []
-    chat_returned = False
+    published_events: list[Event] = []
 
-    async def track_event(event: Event):
-        event_publish_order.append(("event", event.content))
-        # At this point, chat should not have returned yet
-        assert not chat_returned
+    async def capture_event(event: Event):
+        published_events.append(event)
 
-    mock_context.eventbus.subscribe(EventType.OUTBOUND, track_event)
+    mock_context.eventbus.subscribe(EventType.OUTBOUND, capture_event)
 
-    with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
-        mock_llm_chat.return_value = ("Test response", [])
+    # Start EventBus worker
+    eventbus_task = mock_context.eventbus.start()
 
-        response = await session.chat("Hi")
-        chat_returned = True
+    try:
+        with patch.object(mock_agent.llm, "chat", new_callable=AsyncMock) as mock_llm_chat:
+            mock_llm_chat.return_value = ("Test response", [])
 
-    assert response == "Test response"
-    assert len(event_publish_order) == 1
-    assert event_publish_order[0] == ("event", "Test response")
+            response = await session.chat("Hi")
+
+        # Wait for event to be processed
+        await asyncio.sleep(0.1)
+
+        assert response == "Test response"
+        assert len(published_events) == 1
+        assert published_events[0].content == "Test response"
+
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass

@@ -81,6 +81,9 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
     with patch(
         "picklebot.messagebus.cli_bus.input", side_effect=["test message", "quit"]
     ):
+        # Start EventBus as worker (processes queued events)
+        eventbus_task = context.eventbus.start()
+
         # Start both workers as background tasks
         bus_task = asyncio.create_task(messagebus_worker.run())
         dispatcher_task = asyncio.create_task(dispatcher_worker.run())
@@ -108,6 +111,7 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
             # Cleanup: cancel workers
             bus_task.cancel()
             dispatcher_task.cancel()
+            eventbus_task.cancel()
 
             # Wait for tasks to finish
             try:
@@ -117,6 +121,11 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
 
             try:
                 await asyncio.wait_for(dispatcher_task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+
+            try:
+                await asyncio.wait_for(eventbus_task, timeout=1.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 

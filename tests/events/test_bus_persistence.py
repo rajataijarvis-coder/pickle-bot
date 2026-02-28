@@ -1,4 +1,5 @@
 # tests/events/test_bus_persistence.py
+
 import asyncio
 import json
 import pytest
@@ -34,7 +35,7 @@ async def test_persist_outbound_event(event_bus, temp_events_dir):
         timestamp=12345.0,
     )
 
-    await event_bus._persist_inbound(event)
+    await event_bus._persist_outbound(event)
 
     # Check file was created
     pending_files = list((temp_events_dir / "pending").glob("*.json"))
@@ -64,8 +65,8 @@ async def test_persist_skips_non_outbound(event_bus, temp_events_dir):
         timestamp=12345.0,
     )
 
-    await event_bus._persist_inbound(inbound_event)
-    await event_bus._persist_inbound(status_event)
+    await event_bus._persist_outbound(inbound_event)
+    await event_bus._persist_outbound(status_event)
 
     # No files should be created
     pending_files = list((temp_events_dir / "pending").glob("*.json"))
@@ -81,8 +82,7 @@ async def test_ack_deletes_persisted_event(event_bus, temp_events_dir):
         source=Source.agent("pickle"),
         timestamp=12345.0,
     )
-
-    await event_bus._persist_inbound(event)
+    await event_bus._persist_outbound(event)
 
     # Get the filename
     pending_files = list((temp_events_dir / "pending").glob("*.json"))
@@ -107,8 +107,7 @@ async def test_atomic_write(event_bus, temp_events_dir):
         source=Source.agent("pickle"),
         timestamp=12345.0,
     )
-
-    await event_bus._persist_inbound(event)
+    await event_bus._persist_outbound(event)
 
     # No temp files should remain
     tmp_files = list((temp_events_dir / "pending").glob(".tmp.*"))
@@ -128,25 +127,34 @@ async def test_publish_outbound_persists_and_notifies(event_bus, temp_events_dir
 
     event_bus.subscribe(EventType.OUTBOUND, handler)
 
-    event = Event(
-        type=EventType.OUTBOUND,
-        session_id="test-session",
-        content="Hello",
-        source=Source.agent("pickle"),
-        timestamp=12345.0,
-    )
+    # Start EventBus worker to process queued events
+    eventbus_task = event_bus.start()
 
-    await event_bus.publish(event)
+    try:
+        event = Event(
+            type=EventType.OUTBOUND,
+            session_id="test-session",
+            content="Hello",
+            source=Source.agent("pickle"),
+            timestamp=12345.0,
+        )
+        await event_bus.publish(event)
 
-    # Allow async tasks to complete
-    await asyncio.sleep(0.1)
+        # Allow async tasks to complete
+        await asyncio.sleep(0.1)
 
-    # Should have persisted
-    pending_files = list((temp_events_dir / "pending").glob("*.json"))
-    assert len(pending_files) == 1
+        # Should have persisted
+        pending_files = list((temp_events_dir / "pending").glob("*.json"))
+        assert len(pending_files) == 1
 
-    # Should have notified subscriber
-    assert len(received) == 1
+        # Should have notified subscriber
+        assert len(received) == 1
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -158,21 +166,30 @@ async def test_publish_inbound_no_persist_inbound(event_bus, temp_events_dir):
 
     event_bus.subscribe(EventType.INBOUND, handler)
 
-    event = Event(
-        type=EventType.INBOUND,
-        session_id="test-session",
-        content="Hi",
-        source=Source.platform("telegram", "user1"),
-        timestamp=12345.0,
-    )
+    # Start EventBus worker to process queued events
+    eventbus_task = event_bus.start()
 
-    await event_bus.publish(event)
+    try:
+        event = Event(
+            type=EventType.INBOUND,
+            session_id="test-session",
+            content="Hi",
+            source=Source.platform("telegram", "user1"),
+            timestamp=12345.0,
+        )
+        await event_bus.publish(event)
 
-    await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)
 
-    # Should NOT have persisted
-    pending_files = list((temp_events_dir / "pending").glob("*.json"))
-    assert len(pending_files) == 0
+        # Should NOT have persisted
+        pending_files = list((temp_events_dir / "pending").glob("*.json"))
+        assert len(pending_files) == 0
 
-    # Should have notified subscriber
-    assert len(received) == 1
+        # Should have notified subscriber
+        assert len(received) == 1
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass

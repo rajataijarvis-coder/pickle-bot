@@ -1,5 +1,6 @@
 """Tests for CronWorker."""
 
+import asyncio
 import pytest
 from datetime import datetime
 from unittest.mock import patch
@@ -60,34 +61,47 @@ async def test_cron_worker_dispatches_due_job(test_context):
 
     test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Create a mock cron job that is due
-    mock_cron = CronDef(
-        id="test-cron",
-        name="Test Cron",
-        agent="pickle",
-        schedule="*/5 * * * *",  # Every 5 minutes
-        prompt="Test prompt from cron",
-    )
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Mock discover_crons to return our known cron job
-    with patch.object(
-        test_context.cron_loader, "discover_crons", return_value=[mock_cron]
-    ):
-        # Patch find_due_jobs to return our mock (ensures it's considered due)
-        with patch(
-            "picklebot.server.cron_worker.find_due_jobs", return_value=[mock_cron]
+    try:
+        # Create a mock cron job that is due
+        mock_cron = CronDef(
+            id="test-cron",
+            name="Test Cron",
+            agent="pickle",
+            schedule="*/5 * * * *",  # Every 5 minutes
+            prompt="Test prompt from cron",
+        )
+
+        # Mock discover_crons to return our known cron job
+        with patch.object(
+            test_context.cron_loader, "discover_crons", return_value=[mock_cron]
         ):
-            await worker._tick()
+            # Patch find_due_jobs to return our mock (ensures it's considered due)
+            with patch(
+                "picklebot.server.cron_worker.find_due_jobs", return_value=[mock_cron]
+            ):
+                await worker._tick()
 
-    # Verify event was published as INBOUND
-    assert len(published_events) == 1
-    event = published_events[0]
-    assert event.type == EventType.INBOUND
-    assert event.content == "Test prompt from cron"
-    assert event.metadata is not None
-    assert event.metadata["agent_id"] == "pickle"
-    assert event.metadata["mode"] == SessionMode.JOB.value
-    assert "job_id" in event.metadata
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        # Verify event was published as INBOUND
+        assert len(published_events) == 1
+        event = published_events[0]
+        assert event.type == EventType.INBOUND
+        assert event.content == "Test prompt from cron"
+        assert event.metadata is not None
+        assert event.metadata["agent_id"] == "pickle"
+        assert event.metadata["mode"] == SessionMode.JOB.value
+        assert "job_id" in event.metadata
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio

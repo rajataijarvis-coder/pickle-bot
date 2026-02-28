@@ -130,25 +130,35 @@ You are a test assistant.
         # Subscribe to capture events
         test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Start worker (it will process one message and wait)
-    task = asyncio.create_task(worker.run())
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Wait for message to be dispatched
-    await asyncio.sleep(0.1)
-    task.cancel()
     try:
-        await task
-    except asyncio.CancelledError:
-        pass
+        # Start worker (it will process one message and wait)
+        task = asyncio.create_task(worker.run())
 
-    # Verify event was published
-    assert len(published_events) == 1
-    event = published_events[0]
-    assert event.type == EventType.INBOUND
-    assert event.content == "hello"
-    assert event.session_id == "test-session-123"
-    assert event.source == "fake:123"
-    assert event.metadata == {"chat_id": "456"}
+        # Wait for message to be dispatched
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify event was published
+        assert len(published_events) == 1
+        event = published_events[0]
+        assert event.type == EventType.INBOUND
+        assert event.content == "hello"
+        assert event.session_id == "test-session-123"
+        assert event.source == "fake:123"
+        assert event.metadata == {"chat_id": "456"}
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -265,21 +275,31 @@ You are a test assistant.
         worker = MessageBusWorker(test_context)
         test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Start worker
-    task = asyncio.create_task(worker.run())
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Wait for message to be dispatched
-    await asyncio.sleep(0.1)
-    task.cancel()
     try:
-        await task
-    except asyncio.CancelledError:
-        pass
+        # Start worker
+        task = asyncio.create_task(worker.run())
 
-    # Verify event has the existing session_id
-    assert len(published_events) == 1
-    event = published_events[0]
-    assert event.session_id == "existing-session-uuid"
+        # Wait for message to be dispatched
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify event has the existing session_id
+        assert len(published_events) == 1
+        event = published_events[0]
+        assert event.session_id == "existing-session-uuid"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -313,20 +333,30 @@ You are a test assistant.
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
         test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Start worker
-    task = asyncio.create_task(worker.run())
-    await asyncio.sleep(0.1)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Verify event has Discord metadata (channel_id, not chat_id)
-    assert len(published_events) == 1
-    event = published_events[0]
-    assert event.source == "discord:456"
-    assert event.metadata == {"channel_id": "789"}
+    try:
+        # Start worker
+        task = asyncio.create_task(worker.run())
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify event has Discord metadata (channel_id, not chat_id)
+        assert len(published_events) == 1
+        event = published_events[0]
+        assert event.source == "discord:456"
+        assert event.metadata == {"channel_id": "789"}
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 class TestMessageBusWorkerSlashCommands:
@@ -453,17 +483,27 @@ You are a test assistant.
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
         test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    # Start worker
-    task = asyncio.create_task(worker.run())
-    await asyncio.sleep(0.1)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
 
-    # Verify event has timestamp
-    assert len(published_events) == 1
-    event = published_events[0]
-    assert event.timestamp > 0
-    assert isinstance(event.timestamp, float)
+    try:
+        # Start worker
+        task = asyncio.create_task(worker.run())
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify event has timestamp
+        assert len(published_events) == 1
+        event = published_events[0]
+        assert event.timestamp > 0
+        assert isinstance(event.timestamp, float)
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass

@@ -38,4 +38,5 @@ class SharedContext:
         else:
             self.messagebus_buses = MessageBus.from_config(config)
 
-        self.eventbus = EventBus()
+        # Pass workspace for EventBus persistence (each workspace has its own pending events)
+        self.eventbus = EventBus(events_dir=config.workspace / ".events")

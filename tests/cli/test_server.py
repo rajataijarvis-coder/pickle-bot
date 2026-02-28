@@ -28,9 +28,10 @@ class TestServer:
         server = Server(context)
         server._setup_workers()
 
-        # Should have 2 workers: AgentDispatcherWorker and CronWorker
-        assert len(server.workers) == 2
+        # Should have 3 workers: EventBus, AgentDispatcherWorker, CronWorker
+        assert len(server.workers) == 3
         worker_types = [w.__class__.__name__ for w in server.workers]
+        assert "EventBus" in worker_types
         assert "AgentDispatcherWorker" in worker_types
         assert "CronWorker" in worker_types
         assert "MessageBusWorker" not in worker_types
@@ -50,9 +51,10 @@ class TestServer:
             server = Server(context)
             server._setup_workers()
 
-            # Should have 3 workers: AgentDispatcherWorker, CronWorker, and MessageBusWorker
-            assert len(server.workers) == 3
+            # Should have 4 workers: EventBus, AgentDispatcherWorker, CronWorker, MessageBusWorker
+            assert len(server.workers) == 4
             worker_types = [w.__class__.__name__ for w in server.workers]
+            assert "EventBus" in worker_types
             assert "AgentDispatcherWorker" in worker_types
             assert "CronWorker" in worker_types
             assert mock_worker_class.called  # MessageBusWorker was created
@@ -72,9 +74,10 @@ class TestServer:
         server = Server(context)
         server._setup_workers()
 
-        # Should have only 2 workers: AgentDispatcherWorker and CronWorker
-        assert len(server.workers) == 2
+        # Should have 3 workers: EventBus, AgentDispatcherWorker, CronWorker
+        assert len(server.workers) == 3
         worker_types = [w.__class__.__name__ for w in server.workers]
+        assert "EventBus" in worker_types
         assert "AgentDispatcherWorker" in worker_types
         assert "CronWorker" in worker_types
         assert "MessageBusWorker" not in worker_types
