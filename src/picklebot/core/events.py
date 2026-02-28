@@ -277,15 +277,15 @@ class DispatchResultEvent:
 
 
 # Type alias for all event types
-Event = InboundEvent | OutboundEvent | DispatchEvent | DispatchResultEvent
+TypedEvent = InboundEvent | OutboundEvent | DispatchEvent | DispatchResultEvent
 
 
-def serialize_event(event: Event) -> dict[str, Any]:
+def serialize_event(event: TypedEvent) -> dict[str, Any]:
     """Serialize any event type to dict."""
     return event.to_dict()
 
 
-def deserialize_event(data: dict[str, Any]) -> Event:
+def deserialize_event(data: dict[str, Any]) -> TypedEvent:
     """Deserialize dict to appropriate event type."""
     event_type = data.get("type")
 
