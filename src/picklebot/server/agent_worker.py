@@ -5,7 +5,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from picklebot.server.base import Worker, Job
+from picklebot.server.base import Worker
 from picklebot.core.agent import Agent, SessionMode
 from picklebot.events.types import Event, EventType, Source
 from picklebot.utils.def_loader import DefNotFoundError
@@ -20,22 +20,29 @@ MAX_RETRIES = 3
 
 
 class SessionExecutor:
-    """Executes a single agent session job."""
+    """Executes a single agent session from an event."""
 
     def __init__(
         self,
         context: "SharedContext",
         agent_def: "AgentDef",
-        job: Job,
+        event: Event,
         semaphore: asyncio.Semaphore,
     ):
         self.context = context
         self.agent_def = agent_def
-        self.job = job
+        self.event = event
         self.semaphore = semaphore
         self.logger = logging.getLogger(
             f"picklebot.server.SessionExecutor.{agent_def.id}"
         )
+
+        # Extract fields from event (with defaults)
+        metadata = event.metadata or {}
+        self.job_id = metadata.get("job_id", event.session_id)
+        self.agent_id = metadata.get("agent_id", "")
+        self.mode = SessionMode(metadata.get("mode", "CHAT"))
+        self.retry_count = metadata.get("retry_count", 0)
 
     async def run(self) -> None:
         """Wait for semaphore, execute session, release."""
@@ -44,55 +51,51 @@ class SessionExecutor:
 
     async def _execute(self) -> None:
         """Run the actual agent session."""
+        session_id = self.event.session_id or None
+
         try:
             agent = Agent(self.agent_def, self.context)
 
-            if self.job.session_id:
+            if session_id:
                 try:
-                    session = agent.resume_session(self.job.session_id)
+                    session = agent.resume_session(session_id)
                 except ValueError:
-                    self.logger.warning(
-                        f"Session {self.job.session_id} not found, creating new"
-                    )
-                    session = agent.new_session(
-                        self.job.mode, session_id=self.job.session_id
-                    )
+                    self.logger.warning(f"Session {session_id} not found, creating new")
+                    session = agent.new_session(self.mode, session_id=session_id)
             else:
-                session = agent.new_session(self.job.mode)
-                self.job.session_id = session.session_id
+                session = agent.new_session(self.mode)
+                session_id = session.session_id
 
-            response = await session.chat(self.job.message)
-            self.logger.info(f"Session completed: {session.session_id}")
+            response = await session.chat(self.event.content)
+            self.logger.info(f"Session completed: {session_id}")
 
             # Publish RESULT event for dispatch callers
             result_event = Event(
                 type=EventType.RESULT,
-                session_id=self.job.session_id,
+                session_id=session_id,
                 content=response,
                 source=Source.agent(self.agent_def.id),
                 timestamp=time.time(),
-                metadata={"job_id": self.job.job_id},
+                metadata={"job_id": self.job_id},
             )
             await self.context.eventbus.publish(result_event)
 
         except Exception as e:
             self.logger.error(f"Session failed: {e}")
 
-            if self.job.retry_count < MAX_RETRIES:
-                self.job.retry_count += 1
-                self.job.message = "."
+            if self.retry_count < MAX_RETRIES:
                 # Publish retry as INBOUND event (re-queuing work into the system)
                 retry_event = Event(
                     type=EventType.INBOUND,
-                    session_id=self.job.session_id,
-                    content=self.job.message,
+                    session_id=session_id or "",
+                    content=".",  # Minimal message for retry
                     source=Source.retry(),
                     timestamp=time.time(),
                     metadata={
-                        "job_id": self.job.job_id,
-                        "agent_id": self.job.agent_id,
-                        "mode": self.job.mode.value,
-                        "retry_count": self.job.retry_count,
+                        "job_id": self.job_id,
+                        "agent_id": self.agent_id,
+                        "mode": self.mode.value,
+                        "retry_count": self.retry_count + 1,
                     },
                 )
                 await self.context.eventbus.publish(retry_event)
@@ -100,17 +103,17 @@ class SessionExecutor:
                 # Publish RESULT event with error for dispatch callers
                 result_event = Event(
                     type=EventType.RESULT,
-                    session_id=self.job.session_id or "",
+                    session_id=session_id or "",
                     content="",
                     source=Source.agent(self.agent_def.id),
                     timestamp=time.time(),
-                    metadata={"job_id": self.job.job_id, "error": str(e)},
+                    metadata={"job_id": self.job_id, "error": str(e)},
                 )
                 await self.context.eventbus.publish(result_event)
 
 
 class AgentDispatcherWorker(Worker):
-    """Dispatches jobs to session executors with per-agent concurrency control.
+    """Dispatches events to session executors with per-agent concurrency control.
 
     Subscribes to:
     - INBOUND events (from platforms, cron, retries)
@@ -129,57 +132,27 @@ class AgentDispatcherWorker(Worker):
         if event.type != EventType.INBOUND:
             return
 
+        # Ensure agent_id is set (use default if not in metadata)
         metadata = event.metadata or {}
-        job_id = metadata.get("job_id")
-        agent_id = metadata.get("agent_id", self._default_agent_id)
-        mode_str = metadata.get("mode", "CHAT")
-        retry_count = metadata.get("retry_count", 0)
+        if "agent_id" not in metadata:
+            # Mutate event to include default agent_id
+            event.metadata = {**metadata, "agent_id": self._default_agent_id}
 
-        try:
-            mode = SessionMode(mode_str)
-        except ValueError:
-            mode = SessionMode.CHAT
-
-        # Create job from event
-        job = Job(
-            job_id=job_id or event.session_id,
-            agent_id=agent_id,
-            message=event.content,
-            mode=mode,
-            session_id=event.session_id,
-            retry_count=retry_count,
+        self._dispatch_event(event)
+        self.logger.debug(
+            f"Dispatched job for INBOUND event, job_id={metadata.get('job_id')}"
         )
-
-        self._dispatch_job(job)
-        self.logger.debug(f"Dispatched job for INBOUND event, job_id={job.job_id}")
 
     async def handle_dispatch(self, event: Event) -> None:
         """Handle DISPATCH event (from subagent calls)."""
         if event.type != EventType.DISPATCH:
             return
 
+        self._dispatch_event(event)
         metadata = event.metadata or {}
-        job_id = metadata.get("job_id")
-        agent_id = metadata.get("agent_id", self._default_agent_id)
-        mode_str = metadata.get("mode", "JOB")
-
-        try:
-            mode = SessionMode(mode_str)
-        except ValueError:
-            mode = SessionMode.JOB
-
-        # Create job from event
-        job = Job(
-            job_id=job_id or event.session_id,
-            agent_id=agent_id,
-            message=event.content,
-            mode=mode,
-            session_id=event.session_id if event.session_id != job_id else None,
-            retry_count=metadata.get("retry_count", 0),
+        self.logger.debug(
+            f"Dispatched job for DISPATCH event, job_id={metadata.get('job_id')}"
         )
-
-        self._dispatch_job(job)
-        self.logger.debug(f"Dispatched job for DISPATCH event, job_id={job.job_id}")
 
     def subscribe(self) -> None:
         """Subscribe to INBOUND and DISPATCH events."""
@@ -206,28 +179,35 @@ class AgentDispatcherWorker(Worker):
         except asyncio.CancelledError:
             raise
 
-    def _dispatch_job(self, job: Job) -> None:
-        """Create executor task for job."""
+    def _dispatch_event(self, event: Event) -> None:
+        """Create executor task for event."""
+        metadata = event.metadata or {}
+        agent_id = metadata.get("agent_id", self._default_agent_id)
+
         try:
-            agent_def = self.context.agent_loader.load(job.agent_id)
+            agent_def = self.context.agent_loader.load(agent_id)
         except DefNotFoundError as e:
-            self.logger.error(f"Agent not found: {job.agent_id}: {e}")
+            self.logger.error(f"Agent not found: {agent_id}: {e}")
             # Publish RESULT event with error for dispatch callers
-            asyncio.create_task(self._publish_error_result(job.job_id, str(e)))
+            asyncio.create_task(self._publish_error_result(event, str(e)))
             return
 
         sem = self._get_or_create_semaphore(agent_def)
-        asyncio.create_task(SessionExecutor(self.context, agent_def, job, sem).run())
+        asyncio.create_task(SessionExecutor(self.context, agent_def, event, sem).run())
 
-    async def _publish_error_result(self, job_id: str, error: str) -> None:
+    async def _publish_error_result(self, original_event: Event, error: str) -> None:
         """Publish a RESULT event with error for failed dispatches."""
+        metadata = original_event.metadata or {}
         result_event = Event(
             type=EventType.RESULT,
-            session_id="",
+            session_id=original_event.session_id,
             content="",
             source="agent:dispatcher",
             timestamp=time.time(),
-            metadata={"job_id": job_id, "error": error},
+            metadata={
+                "job_id": metadata.get("job_id", original_event.session_id),
+                "error": error,
+            },
         )
         await self.context.eventbus.publish(result_event)
 

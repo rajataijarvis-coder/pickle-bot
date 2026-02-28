@@ -2,27 +2,11 @@
 
 import asyncio
 import logging
-import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-
-from picklebot.core.agent import SessionMode
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
-
-
-@dataclass
-class Job:
-    """A unit of work for the AgentWorker."""
-
-    agent_id: str  # Which agent to run
-    message: str  # User prompt
-    mode: SessionMode  # CHAT or JOB
-    job_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    session_id: str | None = None  # None = new session, set after first pickup
-    retry_count: int = 0
 
 
 class Worker(ABC):
