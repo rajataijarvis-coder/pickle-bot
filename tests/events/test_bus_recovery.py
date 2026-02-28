@@ -5,7 +5,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 from picklebot.core.eventbus import EventBus
-from picklebot.core.events import Event, EventType
+from picklebot.core.events import OutboundEvent, EventType
 
 
 @pytest.fixture
@@ -22,13 +22,15 @@ async def test_recover_republishes_pending_events(mock_context):
     pending_dir = mock_context.config.event_path / "pending"
     pending_dir.mkdir(parents=True)
 
+    # Use OutboundEvent format (no metadata field)
     event_data = {
         "type": "outbound",
         "session_id": "test-session",
+        "agent_id": "pickle",
         "content": "Hello",
         "source": "agent:pickle",
         "timestamp": 12345.0,
-        "metadata": {},
+        "error": None,
     }
 
     with open(pending_dir / "12345.0_test-session.json", "w") as f:
@@ -37,7 +39,7 @@ async def test_recover_republishes_pending_events(mock_context):
     # Create bus and track received events
     received = []
 
-    async def handler(event: Event):
+    async def handler(event: OutboundEvent):
         received.append(event)
 
     bus = EventBus(mock_context)
@@ -53,6 +55,7 @@ async def test_recover_republishes_pending_events(mock_context):
         # Event should have been recovered and dispatched
         assert len(received) == 1
         assert received[0].session_id == "test-session"
+        assert received[0].agent_id == "pickle"
     finally:
         eventbus_task.cancel()
         try:
@@ -67,7 +70,7 @@ async def test_recover_empty_pending_dir(mock_context):
 
     received = []
 
-    async def handler(event: Event):
+    async def handler(event: OutboundEvent):
         received.append(event)
 
     bus.subscribe(EventType.OUTBOUND, handler)

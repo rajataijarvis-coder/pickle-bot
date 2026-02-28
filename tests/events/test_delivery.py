@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from picklebot.core.events import Event, EventType, Source
+from picklebot.core.events import OutboundEvent, EventType, Source
 from picklebot.core.eventbus import EventBus
 from picklebot.server.delivery_worker import chunk_message, DeliveryWorker
 
@@ -15,6 +15,7 @@ def mock_context(tmp_path):
     context.config.messagebus = MagicMock()
     context.config.messagebus.telegram = None
     context.config.messagebus.discord = None
+    context.config.messagebus.default_platform = None
     context.config.event_path = tmp_path / ".events"
     context.eventbus = EventBus(context)
     # Mock platform buses list
@@ -47,11 +48,11 @@ async def test_delivery_worker_handles_outbound_event(mock_context):
     mock_telegram_bus.reply = AsyncMock()
     mock_context.messagebus_buses = [mock_telegram_bus]
 
-    event = Event(
-        type=EventType.OUTBOUND,
+    event = OutboundEvent(
         session_id="test-session",
-        content="Hello",
+        agent_id="pickle",
         source=Source.agent("pickle"),
+        content="Hello",
         timestamp=12345.0,
     )
 
@@ -78,11 +79,11 @@ async def test_delivery_worker_handles_cli_platform(mock_context, capsys):
         }
     )
 
-    event = Event(
-        type=EventType.OUTBOUND,
+    event = OutboundEvent(
         session_id="test-session",
-        content="Hello CLI",
+        agent_id="pickle",
         source=Source.agent("pickle"),
+        content="Hello CLI",
         timestamp=12345.0,
     )
 
@@ -141,31 +142,28 @@ def test_platform_limits():
     assert PLATFORM_LIMITS["cli"] == float("inf")
 
 
-def test_lookup_platform_proactive_metadata(mock_context):
-    """Should use platform from metadata when provided."""
-    # Configure discord
+def test_lookup_platform_default_platform(mock_context):
+    """Should use default_platform when session not found."""
+    # Configure discord as default
     mock_context.config.messagebus.discord = MagicMock()
     mock_context.config.messagebus.discord.default_chat_id = "channel-456"
+    mock_context.config.messagebus.default_platform = "discord"
 
     worker = DeliveryWorker(mock_context)
 
-    # Test metadata-based proactive routing
-    result = worker._lookup_platform(
-        "some-session-id", metadata={"platform": "discord"}
-    )
+    # Test default platform routing for unknown session
+    result = worker._lookup_platform("some-session-id")
 
     assert result["platform"] == "discord"
     assert result["channel_id"] == "channel-456"
 
 
-def test_lookup_platform_proactive_fallback_to_cli(mock_context):
-    """Should fallback to CLI for unknown platforms."""
+def test_lookup_platform_fallback_to_cli(mock_context):
+    """Should fallback to CLI when no default platform configured."""
     worker = DeliveryWorker(mock_context)
 
-    # Test unknown platform via metadata
-    result = worker._lookup_platform(
-        "some-session-id", metadata={"platform": "unknown-platform"}
-    )
+    # No default platform configured
+    result = worker._lookup_platform("some-session-id")
 
     assert result["platform"] == "cli"
 
@@ -175,9 +173,10 @@ async def test_delivery_worker_handles_proactive_event(mock_context):
     """Should deliver proactive messages via post() instead of reply()."""
     worker = DeliveryWorker(mock_context)
 
-    # Configure telegram
+    # Configure telegram as default platform
     mock_context.config.messagebus.telegram = MagicMock()
     mock_context.config.messagebus.telegram.default_chat_id = "chat-123"
+    mock_context.config.messagebus.default_platform = "telegram"
 
     # Create mock telegram bus
     mock_telegram_bus = MagicMock()
@@ -185,13 +184,13 @@ async def test_delivery_worker_handles_proactive_event(mock_context):
     mock_telegram_bus.post = AsyncMock()
     mock_context.messagebus_buses = [mock_telegram_bus]
 
-    event = Event(
-        type=EventType.OUTBOUND,
-        session_id="test-uuid-1234",  # Just a UUID, platform comes from metadata
-        content="Proactive message",
+    # Create OutboundEvent - session not in mapping, uses default_platform
+    event = OutboundEvent(
+        session_id="test-uuid-1234",
+        agent_id="pickle",
         source=Source.agent("pickle"),
+        content="Proactive message",
         timestamp=12345.0,
-        metadata={"platform": "telegram"},
     )
 
     await worker.handle_event(event)

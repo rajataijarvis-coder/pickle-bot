@@ -4,7 +4,7 @@ import logging
 import random
 from typing import TYPE_CHECKING, Any
 
-from picklebot.core.events import Event, EventType
+from picklebot.core.events import OutboundEvent, EventType
 from .worker import SubscriberWorker
 
 if TYPE_CHECKING:
@@ -102,14 +102,15 @@ class DeliveryWorker(SubscriberWorker):
         self.context.eventbus.subscribe(EventType.OUTBOUND, self.handle_event)
         self.logger.info("DeliveryWorker subscribed to OUTBOUND events")
 
-    async def handle_event(self, event: Event) -> None:
+    async def handle_event(self, event: OutboundEvent) -> None:
         """Handle an outbound message event."""
-        if event.type != EventType.OUTBOUND:
+        # Type check - only handle OutboundEvent
+        if not isinstance(event, OutboundEvent):
             return
 
         try:
             # Look up where to deliver
-            platform_info = self._lookup_platform(event.session_id, event.metadata)
+            platform_info = self._lookup_platform(event.session_id)
             platform = platform_info["platform"]
 
             # Get limit and chunk
@@ -136,23 +137,15 @@ class DeliveryWorker(SubscriberWorker):
             self.logger.error(f"Failed to deliver message: {e}")
             # TODO: Retry logic with backoff
 
-    def _lookup_platform(
-        self, session_id: str, metadata: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _lookup_platform(self, session_id: str) -> dict[str, Any]:
         """Look up platform and delivery context for a session.
 
         Args:
             session_id: Session ID to look up (UUID format)
-            metadata: Optional event metadata (may contain 'platform' for proactive msgs)
 
         Returns:
             Dict with platform info (platform, user_id, chat_id/channel_id)
         """
-        # Check metadata for platform (proactive messages from tools)
-        if metadata and "platform" in metadata:
-            platform = metadata["platform"]
-            return self._get_proactive_platform_info(platform)
-
         # Look in messagebus config for session -> platform mapping
         messagebus_config = self.context.config.messagebus
 
@@ -178,7 +171,12 @@ class DeliveryWorker(SubscriberWorker):
                         "channel_id": messagebus_config.discord.default_chat_id,
                     }
 
-        # Default to CLI if not found
+        # Session not found - use default platform for proactive messages
+        default_platform = messagebus_config.default_platform
+        if default_platform:
+            return self._get_proactive_platform_info(default_platform)
+
+        # Default to CLI if no default platform configured
         return {"platform": "cli"}
 
     def _get_proactive_platform_info(self, platform: str) -> dict[str, Any]:

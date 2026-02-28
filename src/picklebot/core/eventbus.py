@@ -14,6 +14,7 @@ from .events import (
     OutboundEvent,
     DispatchEvent,
     DispatchResultEvent,
+    deserialize_event,
 )
 
 if TYPE_CHECKING:
@@ -160,7 +161,8 @@ class EventBus:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                event = Event.from_dict(data)
+                # Use deserialize_event to handle typed events
+                event = deserialize_event(data)
                 await self._notify_subscribers(event)
                 count += 1
                 logger.debug(f"Recovered event from {file_path.name}")
