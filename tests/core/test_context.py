@@ -10,3 +10,11 @@ def test_context_initialization(test_context):
     assert test_context.cron_loader is not None
     assert test_context.command_registry is not None
     assert test_context.eventbus is not None
+
+
+def test_shared_context_has_routing_table(test_context):
+    """SharedContext should initialize RoutingTable."""
+    from picklebot.core.routing import RoutingTable
+
+    assert hasattr(test_context, "routing_table")
+    assert isinstance(test_context.routing_table, RoutingTable)
