@@ -7,6 +7,8 @@ import os
 from collections import defaultdict
 from typing import Awaitable, Callable, TYPE_CHECKING, Union
 
+from picklebot.server.worker import Worker
+
 from .events import (
     Event,
     EventType,
@@ -27,7 +29,7 @@ AnyEvent = Union[Event, InboundEvent, OutboundEvent, DispatchEvent, DispatchResu
 Handler = Callable[[AnyEvent], Awaitable[None]]
 
 
-class EventBus:
+class EventBus(Worker):
     """Central event bus with subscription support and async dispatch.
 
     Uses internal queue to decouple publish and dispatch.
@@ -35,12 +37,12 @@ class EventBus:
     """
 
     def __init__(self, context: "SharedContext"):
+        super().__init__(context)
         self.context = context
         self._subscribers: dict[EventType, list[Handler]] = defaultdict(list)
         self._queue: asyncio.Queue[AnyEvent] = asyncio.Queue()
         self.pending_dir = context.config.event_path / "pending"
         self.pending_dir.mkdir(parents=True, exist_ok=True)
-        self._task: asyncio.Task | None = None
 
     def subscribe(self, event_type: EventType, handler: Handler) -> None:
         """Subscribe a handler to an event type."""
@@ -58,36 +60,6 @@ class EventBus:
         """Publish an event to the internal queue (non-blocking)."""
         await self._queue.put(event)
         logger.debug(f"Queued {event.type.value} event from {event.source}")
-
-    def start(self) -> asyncio.Task:
-        """Start the event bus as an asyncio Task."""
-        self._task = asyncio.create_task(self.run())
-        return self._task
-
-    def is_running(self) -> bool:
-        """Check if event bus is actively running."""
-        return self._task is not None and not self._task.done()
-
-    def has_crashed(self) -> bool:
-        """Check if event bus crashed (done but not cancelled)."""
-        return (
-            self._task is not None and self._task.done() and not self._task.cancelled()
-        )
-
-    def get_exception(self) -> BaseException | None:
-        """Get the exception if event bus crashed, None otherwise."""
-        if self.has_crashed() and self._task is not None:
-            return self._task.exception()
-        return None
-
-    async def stop(self) -> None:
-        """Gracefully stop the event bus."""
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
 
     async def run(self) -> None:
         """Process events from queue, starting with recovery."""

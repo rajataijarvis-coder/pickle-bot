@@ -175,25 +175,34 @@ class Config(BaseModel):
             FileNotFoundError: If config directory doesn't exist
             ValidationError: If configuration is invalid
         """
+        config_data = cls._load_merged_configs(workspace_dir)
+        config_data["workspace"] = workspace_dir
+        return cls.model_validate(config_data)
 
-        config_data: dict = {"workspace": workspace_dir}
+    @classmethod
+    def _load_merged_configs(cls, workspace_dir: Path) -> dict[str, Any]:
+        """Load and merge user and runtime config files.
+
+        Args:
+            workspace_dir: Directory containing config files
+
+        Returns:
+            Merged configuration dict from YAML files only
+        """
+        config_data: dict[str, Any] = {}
 
         user_config = workspace_dir / "config.user.yaml"
         runtime_config = workspace_dir / "config.runtime.yaml"
 
         if user_config.exists():
             with open(user_config) as f:
-                user_data = yaml.safe_load(f) or {}
-            config_data = cls._deep_merge(config_data, user_data)
+                config_data = cls._deep_merge(config_data, yaml.safe_load(f) or {})
 
-        # Deep merge runtime config (overrides user)
         if runtime_config.exists():
             with open(runtime_config) as f:
-                runtime_data = yaml.safe_load(f) or {}
-            config_data = cls._deep_merge(config_data, runtime_data)
+                config_data = cls._deep_merge(config_data, yaml.safe_load(f) or {})
 
-        # Validate and create Config instance
-        return cls.model_validate(config_data)
+        return config_data
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -281,33 +290,8 @@ class Config(BaseModel):
             True if reload succeeded, False if file not found or invalid
         """
         try:
-            user_config = self.workspace / "config.user.yaml"
-            runtime_config = self.workspace / "config.runtime.yaml"
-
-            # Exclude auto-resolved path fields (they get re-resolved during validation)
-            path_fields = {
-                "agents_path",
-                "skills_path",
-                "logging_path",
-                "history_path",
-                "event_path",
-                "crons_path",
-                "memories_path",
-            }
-            config_data = self.model_dump(
-                mode="json", exclude_none=True, exclude=path_fields
-            )
+            config_data = self._load_merged_configs(self.workspace)
             config_data["workspace"] = self.workspace
-
-            if user_config.exists():
-                with open(user_config) as f:
-                    user_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, user_data)
-
-            if runtime_config.exists():
-                with open(runtime_config) as f:
-                    runtime_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, runtime_data)
 
             # Create new instance and copy values
             new_config = Config.model_validate(config_data)
