@@ -162,7 +162,7 @@ class TestHistoryStoreInit:
 class TestCreateSession:
     def test_creates_session(self, history_store):
         """create_session should return session metadata."""
-        session = history_store.create_session("test-agent", "session-123")
+        session = history_store.create_session("test-agent", "session-123", source="cli:test")
 
         assert session["id"] == "session-123"
         assert session["agent_id"] == "test-agent"
@@ -171,7 +171,7 @@ class TestCreateSession:
 
     def test_creates_index_entry(self, history_store):
         """create_session should append to index.jsonl."""
-        history_store.create_session("test-agent", "session-123")
+        history_store.create_session("test-agent", "session-123", source="cli:test")
 
         with open(history_store.index_path) as f:
             lines = f.readlines()
@@ -182,7 +182,7 @@ class TestCreateSession:
 
     def test_creates_empty_session_file(self, history_store):
         """create_session should create chunk file with .1.jsonl extension."""
-        history_store.create_session("test-agent", "session-123")
+        history_store.create_session("test-agent", "session-123", source="cli:test")
 
         # Should create session-session-123.1.jsonl (chunk format)
         session_file = history_store.sessions_path / "session-session-123.1.jsonl"
@@ -193,8 +193,8 @@ class TestCreateSession:
 
     def test_multiple_sessions(self, history_store):
         """Multiple sessions should be appended to index."""
-        history_store.create_session("agent-1", "session-1")
-        history_store.create_session("agent-2", "session-2")
+        history_store.create_session("agent-1", "session-1", source="cli:test")
+        history_store.create_session("agent-2", "session-2", source="cli:test")
 
         sessions = history_store.list_sessions()
         assert len(sessions) == 2
@@ -206,7 +206,7 @@ class TestCreateSession:
 class TestSaveMessage:
     def test_appends_message_to_session_file(self, history_store):
         """save_message should append line to session file."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         msg = HistoryMessage(role="user", content="Hello")
         history_store.save_message("session-1", msg)
@@ -223,7 +223,7 @@ class TestSaveMessage:
 
     def test_updates_message_count_in_index(self, history_store):
         """save_message should update message_count in index."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         msg = HistoryMessage(role="user", content="Hello")
         history_store.save_message("session-1", msg)
@@ -233,7 +233,7 @@ class TestSaveMessage:
 
     def test_auto_generates_title_from_first_user_message(self, history_store):
         """First user message should auto-generate session title."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         msg = HistoryMessage(
             role="user",
@@ -248,7 +248,7 @@ class TestSaveMessage:
 
     def test_handles_tool_calls(self, history_store):
         """save_message should store tool_calls."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         msg = HistoryMessage(
             role="assistant",
@@ -265,14 +265,14 @@ class TestSaveMessage:
 class TestGetMessages:
     def test_returns_empty_list_for_new_session(self, history_store):
         """get_messages should return empty list for new session."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         messages = history_store.get_messages("session-1")
         assert messages == []
 
     def test_returns_all_messages(self, history_store):
         """get_messages should return all messages in order."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         history_store.save_message(
             "session-1", HistoryMessage(role="user", content="Hello")
@@ -290,7 +290,7 @@ class TestGetMessages:
 class TestUpdateSessionTitle:
     def test_updates_title_in_index(self, history_store):
         """update_session_title should update title in index."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         history_store.update_session_title("session-1", "New Title")
 
@@ -306,8 +306,8 @@ class TestListSessions:
 
     def test_returns_sessions_ordered_by_updated_at(self, history_store):
         """list_sessions should return most recently updated first."""
-        history_store.create_session("agent", "session-1")
-        history_store.create_session("agent", "session-2")
+        history_store.create_session("agent", "session-1", source="cli:test")
+        history_store.create_session("agent", "session-2", source="cli:test")
 
         # Update session-1
         history_store.save_message(
@@ -380,7 +380,7 @@ class TestHistoryStoreChunkHelpers:
 class TestSaveMessageChunking:
     def test_creates_new_chunk_when_full(self, history_store):
         """save_message should create new chunk when current is full."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         # Fill first chunk (3 messages = max_history_file_size)
         for i in range(3):
@@ -410,7 +410,7 @@ class TestSaveMessageChunking:
 
     def test_updates_chunk_count_in_index(self, history_store):
         """save_message should update chunk_count when creating new chunk."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         # Fill chunk 1 (max_history_file_size=3)
         history_store.save_message(
@@ -433,7 +433,7 @@ class TestSaveMessageChunking:
 
     def test_appends_to_current_chunk_when_not_full(self, history_store):
         """save_message should append to current chunk when not full."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         history_store.save_message(
             "session-1", HistoryMessage(role="user", content="hello")
@@ -450,7 +450,7 @@ class TestSaveMessageChunking:
 class TestGetMessagesChunking:
     def test_loads_from_multiple_chunks(self, history_store):
         """get_messages should load from multiple chunks, newest first."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         # Create 5 messages across 2 chunks (max_history_file_size=3 per chunk)
         for i in range(5):
@@ -467,7 +467,7 @@ class TestGetMessagesChunking:
 
     def test_loads_all_when_less_than_max(self, history_store):
         """get_messages should return all when less than max_history."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         history_store.save_message(
             "session-1", HistoryMessage(role="user", content="a")
@@ -483,7 +483,7 @@ class TestGetMessagesChunking:
 
     def test_spans_chunks_for_max_history(self, history_store):
         """get_messages should span chunks to reach max_history."""
-        history_store.create_session("agent", "session-1")
+        history_store.create_session("agent", "session-1", source="cli:test")
 
         # 5 messages across 2 chunks (3 in chunk 1, 2 in chunk 2)
         for i in range(5):
@@ -498,6 +498,59 @@ class TestGetMessagesChunking:
         assert messages[0].content == "msg2"
         assert messages[1].content == "msg3"
         assert messages[2].content == "msg4"
+
+
+class TestHistoryStoreWithSource:
+    """Tests for HistoryStore with source/context support."""
+
+    def test_create_session_with_source(self, history_store):
+        """create_session should store source."""
+        result = history_store.create_session(
+            agent_id="pickle",
+            session_id="test-123",
+            source="telegram:user_456",
+        )
+        assert result["source"] == "telegram:user_456"
+
+    def test_create_session_with_source_and_context(self, history_store):
+        """create_session should store source and context."""
+        context = {"type": "TelegramContext", "data": {"user_id": "456", "chat_id": "789"}}
+        result = history_store.create_session(
+            agent_id="pickle",
+            session_id="test-123",
+            source="telegram:user_456",
+            context=context,
+        )
+        assert result["source"] == "telegram:user_456"
+        assert result["context"] == context
+
+    def test_list_sessions_includes_source(self, history_store):
+        """list_sessions should return sessions with source."""
+        history_store.create_session(
+            agent_id="pickle",
+            session_id="test-123",
+            source="cron:daily",
+        )
+        sessions = history_store.list_sessions()
+        assert len(sessions) == 1
+        assert sessions[0].source == "cron:daily"
+
+    def test_get_session_by_id(self, history_store):
+        """Should be able to get a specific session by ID."""
+        history_store.create_session(
+            agent_id="pickle",
+            session_id="test-123",
+            source="telegram:user_456",
+            context={"type": "TelegramContext", "data": {"user_id": "456"}},
+        )
+
+        # Find the session
+        sessions = history_store.list_sessions()
+        session = next((s for s in sessions if s.id == "test-123"), None)
+
+        assert session is not None
+        assert session.source == "telegram:user_456"
+        assert session.context is not None
 
 
 class TestHistorySessionWithSource:

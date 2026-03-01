@@ -187,12 +187,30 @@ class HistoryStore:
                 return i
         return -1
 
-    def create_session(self, agent_id: str, session_id: str) -> dict[str, Any]:
-        """Create a new conversation session."""
+    def create_session(
+        self,
+        agent_id: str,
+        session_id: str,
+        source: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a new conversation session.
+
+        Args:
+            agent_id: ID of the agent
+            session_id: Unique session identifier
+            source: Origin of the session (e.g., "telegram:user_123")
+            context: Optional serialized MessageContext
+
+        Returns:
+            Session metadata dict
+        """
         now = _now_iso()
         session = HistorySession(
             id=session_id,
             agent_id=agent_id,
+            source=source,
+            context=context,
             chunk_count=1,
             title=None,
             message_count=0,
