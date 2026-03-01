@@ -109,10 +109,8 @@ def create_subagent_dispatch_tool(
                     else:
                         result_future.set_result(event.content)
 
-        # Subscribe to DISPATCH_RESULT events
-        from picklebot.core.events import EventType
-
-        shared_context.eventbus.subscribe(EventType.DISPATCH_RESULT, handle_result)
+        # Subscribe to DispatchResultEvent events
+        shared_context.eventbus.subscribe(DispatchResultEvent, handle_result)
 
         try:
             # Publish DISPATCH event

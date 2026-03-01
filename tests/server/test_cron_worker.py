@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from picklebot.server.cron_worker import CronWorker, find_due_jobs
 from picklebot.core.cron_loader import CronDef
-from picklebot.core.events import EventType, InboundEvent
+from picklebot.core.events import InboundEvent
 
 
 def test_find_due_jobs_returns_matching():
@@ -58,7 +58,7 @@ async def test_cron_worker_dispatches_due_job(test_context, test_agent_def):
     async def capture_event(event: InboundEvent) -> None:
         published_events.append(event)
 
-    test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+    test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -89,10 +89,10 @@ async def test_cron_worker_dispatches_due_job(test_context, test_agent_def):
         # Wait for EventBus to process the queued event
         await asyncio.sleep(0.1)
 
-        # Verify event was published as INBOUND
+        # Verify event was published as InboundEvent
         assert len(published_events) == 1
         event = published_events[0]
-        assert event.type == EventType.INBOUND
+        assert isinstance(event, InboundEvent)
         assert event.content == "Test prompt from cron"
         # InboundEvent has agent_id directly (not in metadata)
         assert isinstance(event, InboundEvent)

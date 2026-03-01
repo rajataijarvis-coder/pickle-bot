@@ -5,7 +5,13 @@ import logging
 from typing import TYPE_CHECKING
 
 from .worker import SubscriberWorker
-from picklebot.core.events import Event, EventType
+from picklebot.core.events import (
+    Event,
+    InboundEvent,
+    OutboundEvent,
+    DispatchEvent,
+    DispatchResultEvent,
+)
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
@@ -23,12 +29,10 @@ class WebSocketWorker(SubscriberWorker):
         super().__init__(context)
         self._clients: set = set()  # Future: set of WebSocket connections
 
-        # Auto-subscribe to all event types
-        for event_type in EventType:
-            self.context.eventbus.subscribe(event_type, self.handle_event)
-        self.logger.info(
-            f"WebSocketWorker subscribed to all {len(EventType)} event types"
-        )
+        # Auto-subscribe to all event classes
+        for event_class in [InboundEvent, OutboundEvent, DispatchEvent, DispatchResultEvent]:
+            self.context.eventbus.subscribe(event_class, self.handle_event)
+        self.logger.info("WebSocketWorker subscribed to all event types")
 
     async def handle_event(self, event: Event) -> None:
         """Handle an event by broadcasting to WebSocket clients.
@@ -36,4 +40,4 @@ class WebSocketWorker(SubscriberWorker):
         TODO: Implement actual WebSocket broadcasting.
         For now, just logs the event.
         """
-        self.logger.debug(f"WebSocket stub received {event.type.value} event")
+        self.logger.debug(f"WebSocket stub received {event.__class__.__name__} event")

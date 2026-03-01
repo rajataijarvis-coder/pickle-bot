@@ -3,7 +3,7 @@
 import asyncio
 import json
 import pytest
-from picklebot.core.events import Event, OutboundEvent, InboundEvent, EventType, Source
+from picklebot.core.events import Event, OutboundEvent, InboundEvent, Source
 
 
 @pytest.fixture
@@ -111,7 +111,7 @@ async def test_publish_outbound_persists_and_notifies(event_bus, events_dir):
     async def handler(event: Event):
         received.append(event)
 
-    event_bus.subscribe(EventType.OUTBOUND, handler)
+    event_bus.subscribe(OutboundEvent, handler)
 
     # Start EventBus worker to process queued events
     eventbus_task = event_bus.start()
@@ -150,7 +150,7 @@ async def test_publish_inbound_no_persist_inbound(event_bus, events_dir):
     async def handler(event: Event):
         received.append(event)
 
-    event_bus.subscribe(EventType.INBOUND, handler)
+    event_bus.subscribe(InboundEvent, handler)
 
     # Start EventBus worker to process queued events
     eventbus_task = event_bus.start()

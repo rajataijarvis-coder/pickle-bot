@@ -14,7 +14,6 @@ from picklebot.server.agent_worker import (
     SessionExecutor,
 )
 from picklebot.core.events import (
-    EventType,
     InboundEvent,
     DispatchEvent,
     DispatchResultEvent,
@@ -94,7 +93,7 @@ async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
     async def capture_result(event: DispatchResultEvent) -> None:
         result_events.append(event)
 
-    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
+    test_context.eventbus.subscribe(DispatchResultEvent, capture_result)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -150,7 +149,7 @@ You are a test assistant.
     async def capture_event(evt: InboundEvent) -> None:
         inbound_events.append(evt)
 
-    test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+    test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -441,7 +440,7 @@ You are a test assistant.
     async def capture_result(evt: DispatchResultEvent) -> None:
         result_events.append(evt)
 
-    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
+    test_context.eventbus.subscribe(DispatchResultEvent, capture_result)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -505,7 +504,7 @@ You are a test assistant.
     async def capture_event(evt: InboundEvent) -> None:
         inbound_events.append(evt)
 
-    test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+    test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -570,7 +569,7 @@ You are a test assistant.
     async def capture_result(evt: DispatchResultEvent) -> None:
         result_events.append(evt)
 
-    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
+    test_context.eventbus.subscribe(DispatchResultEvent, capture_result)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()

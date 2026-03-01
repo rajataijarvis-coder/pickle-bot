@@ -4,7 +4,7 @@ import logging
 import random
 from typing import TYPE_CHECKING, Any
 
-from picklebot.core.events import OutboundEvent, EventType
+from picklebot.core.events import OutboundEvent
 from .worker import SubscriberWorker
 
 if TYPE_CHECKING:
@@ -98,9 +98,9 @@ class DeliveryWorker(SubscriberWorker):
 
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
-        # Auto-subscribe to OUTBOUND events
-        self.context.eventbus.subscribe(EventType.OUTBOUND, self.handle_event)
-        self.logger.info("DeliveryWorker subscribed to OUTBOUND events")
+        # Auto-subscribe to OutboundEvent events
+        self.context.eventbus.subscribe(OutboundEvent, self.handle_event)
+        self.logger.info("DeliveryWorker subscribed to OutboundEvent events")
 
     async def handle_event(self, event: OutboundEvent) -> None:
         """Handle an outbound message event."""

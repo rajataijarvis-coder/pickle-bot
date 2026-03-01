@@ -10,7 +10,6 @@ from .worker import SubscriberWorker
 from picklebot.core.agent import Agent
 from picklebot.core.events import (
     Event,
-    EventType,
     Source,
     InboundEvent,
     OutboundEvent,
@@ -135,8 +134,8 @@ class AgentWorker(SubscriberWorker):
     """Dispatches events to session executors with per-agent concurrency control.
 
     Auto-subscribes to:
-    - INBOUND events (from platforms, cron, retries)
-    - DISPATCH events (from subagent calls)
+    - InboundEvent (from platforms, cron, retries)
+    - DispatchEvent (from subagent calls)
     """
 
     CLEANUP_THRESHOLD = 5
@@ -146,9 +145,9 @@ class AgentWorker(SubscriberWorker):
         self._semaphores: dict[str, asyncio.Semaphore] = {}
 
         # Auto-subscribe to events
-        self.context.eventbus.subscribe(EventType.INBOUND, self._dispatch_event)
-        self.context.eventbus.subscribe(EventType.DISPATCH, self._dispatch_event)
-        self.logger.info("AgentWorker subscribed to INBOUND and DISPATCH events")
+        self.context.eventbus.subscribe(InboundEvent, self._dispatch_event)
+        self.context.eventbus.subscribe(DispatchEvent, self._dispatch_event)
+        self.logger.info("AgentWorker subscribed to InboundEvent and DispatchEvent events")
 
     async def _dispatch_event(self, event: ProcessableEvent) -> None:
         """Create executor task for typed event."""

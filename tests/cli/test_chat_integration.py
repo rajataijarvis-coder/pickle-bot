@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from picklebot.core.context import SharedContext
-from picklebot.core.events import Event, EventType
+from picklebot.core.events import Event, InboundEvent
 from picklebot.messagebus.cli_bus import CliBus
 from picklebot.server.agent_worker import AgentWorker
 from picklebot.server.messagebus_worker import MessageBusWorker
@@ -76,7 +76,7 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
     async def capture_event(event: Event):
         published_events.append(event)
 
-    context.eventbus.subscribe(EventType.INBOUND, capture_event)
+    context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Mock input to simulate user typing "test message" then "quit"
     with patch(
@@ -99,7 +99,7 @@ async def test_cli_message_flow_through_workers(integration_config: Config):
             event = published_events[0]
 
             # Verify event structure
-            assert event.type == EventType.INBOUND
+            assert isinstance(event, InboundEvent)
             assert event.content == "test message"
             assert event.source.startswith("cli:")
             assert event.timestamp > 0

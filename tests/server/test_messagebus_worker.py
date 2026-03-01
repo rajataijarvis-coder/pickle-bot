@@ -9,7 +9,7 @@ from picklebot.server.messagebus_worker import MessageBusWorker
 from picklebot.messagebus.base import MessageContext
 from picklebot.core.commands import CommandRegistry
 from picklebot.core.context import SharedContext
-from picklebot.core.events import InboundEvent, EventType
+from picklebot.core.events import InboundEvent
 
 
 @dataclass
@@ -128,7 +128,7 @@ You are a test assistant.
         # Patch _get_or_create_session_id to return a known session ID for testing
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
         # Subscribe to capture events
-        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+        test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -148,7 +148,7 @@ You are a test assistant.
         # Verify event was published
         assert len(published_events) == 1
         event = published_events[0]
-        assert event.type == EventType.INBOUND
+        assert isinstance(event, InboundEvent)
         assert event.content == "hello"
         assert event.session_id == "test-session-123"
         assert event.source == "fake:123"
@@ -192,7 +192,7 @@ You are a test assistant.
 
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
-        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+        test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     task = asyncio.create_task(worker.run())
     await asyncio.sleep(0.1)
@@ -276,7 +276,7 @@ You are a test assistant.
 
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
-        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+        test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -334,7 +334,7 @@ You are a test assistant.
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
-        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+        test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -487,7 +487,7 @@ You are a test assistant.
     with patch.object(test_context, "messagebus_buses", [bus]):
         worker = MessageBusWorker(test_context)
         worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
-        test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+        test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()

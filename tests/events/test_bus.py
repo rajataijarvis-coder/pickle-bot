@@ -1,6 +1,6 @@
 # tests/events/test_bus.py
 import pytest
-from picklebot.core.events import Event, OutboundEvent, InboundEvent, EventType, Source
+from picklebot.core.events import Event, OutboundEvent, InboundEvent, Source
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ async def test_subscribe_and_notify(event_bus):
     async def handler(event: Event):
         received.append(event)
 
-    event_bus.subscribe(EventType.OUTBOUND, handler)
+    event_bus.subscribe(OutboundEvent, handler)
 
     event = OutboundEvent(
         session_id="test-session",
@@ -47,8 +47,8 @@ async def test_multiple_subscribers(event_bus):
     async def handler_2(event: Event):
         received_2.append(event)
 
-    event_bus.subscribe(EventType.OUTBOUND, handler_1)
-    event_bus.subscribe(EventType.OUTBOUND, handler_2)
+    event_bus.subscribe(OutboundEvent, handler_1)
+    event_bus.subscribe(OutboundEvent, handler_2)
 
     event = OutboundEvent(
         session_id="test-session",
@@ -71,7 +71,7 @@ async def test_unsubscribe(event_bus):
     async def handler(event: Event):
         received.append(event)
 
-    event_bus.subscribe(EventType.OUTBOUND, handler)
+    event_bus.subscribe(OutboundEvent, handler)
     event_bus.unsubscribe(handler)
 
     event = OutboundEvent(
@@ -98,8 +98,8 @@ async def test_subscribe_to_multiple_types(event_bus):
     async def inbound_handler(event: Event):
         received_inbound.append(event)
 
-    event_bus.subscribe(EventType.OUTBOUND, outbound_handler)
-    event_bus.subscribe(EventType.INBOUND, inbound_handler)
+    event_bus.subscribe(OutboundEvent, outbound_handler)
+    event_bus.subscribe(InboundEvent, inbound_handler)
 
     outbound_event = OutboundEvent(
         session_id="test",

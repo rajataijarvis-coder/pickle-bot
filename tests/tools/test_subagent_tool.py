@@ -9,7 +9,7 @@ import pytest
 
 from picklebot.core.context import SharedContext
 from picklebot.tools.subagent_tool import create_subagent_dispatch_tool
-from picklebot.core.events import EventType, DispatchEvent, DispatchResultEvent
+from picklebot.core.events import DispatchEvent, DispatchResultEvent
 
 
 def _make_mock_session():
@@ -133,7 +133,7 @@ You are the target agent.
         async def capture_dispatch(event: DispatchEvent) -> None:
             dispatched_events.append(event)
 
-        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
+        context.eventbus.subscribe(DispatchEvent, capture_dispatch)
 
         # Start EventBus worker to process queued events
         eventbus_task = context.eventbus.start()
@@ -170,7 +170,6 @@ You are the target agent.
             assert len(dispatched_events) == 1
             event = dispatched_events[0]
             assert isinstance(event, DispatchEvent)
-            assert event.type == EventType.DISPATCH
             assert event.agent_id == "target-agent"
 
             # Verify result from RESULT event
@@ -212,7 +211,7 @@ You are the target agent.
         async def capture_dispatch(event: DispatchEvent) -> None:
             dispatched_events.append(event)
 
-        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
+        context.eventbus.subscribe(DispatchEvent, capture_dispatch)
 
         # Start EventBus worker to process queued events
         eventbus_task = context.eventbus.start()
@@ -314,7 +313,7 @@ You are the target agent.
         async def capture_dispatch(event: DispatchEvent) -> None:
             dispatched_events.append(event)
 
-        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
+        context.eventbus.subscribe(DispatchEvent, capture_dispatch)
 
         # Start EventBus worker to process queued events
         eventbus_task = context.eventbus.start()
