@@ -141,6 +141,8 @@ class Config(BaseModel):
     chat_max_history: int = Field(default=50, gt=0)
     job_max_history: int = Field(default=500, gt=0)
     max_history_file_size: int = Field(default=500, gt=0)
+    routing: dict = Field(default_factory=lambda: {"bindings": []})
+    sources: dict[str, dict] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def resolve_paths(self) -> "Config":

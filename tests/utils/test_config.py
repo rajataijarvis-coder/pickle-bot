@@ -427,3 +427,63 @@ class TestConfigReloader:
         assert config.llm.model == "gpt-4o"
 
         reloader.stop()
+
+
+class TestRoutingAndSourcesFields:
+    """Tests for routing and sources config fields."""
+
+    def test_config_has_routing_field(self, tmp_path):
+        """Config should have routing field with bindings."""
+        config_data = {
+            "workspace": str(tmp_path),
+            "llm": {"provider": "zai", "model": "test", "api_key": "test"},
+            "default_agent": "pickle",
+        }
+        config = Config.model_validate(config_data)
+
+        assert config.routing == {"bindings": []}
+
+    def test_config_has_sources_field(self, tmp_path):
+        """Config should have sources field for session cache."""
+        config_data = {
+            "workspace": str(tmp_path),
+            "llm": {"provider": "zai", "model": "test", "api_key": "test"},
+            "default_agent": "pickle",
+        }
+        config = Config.model_validate(config_data)
+
+        assert config.sources == {}
+
+    def test_config_merges_runtime_routing(self, tmp_path):
+        """Runtime config should merge routing bindings."""
+        # Write user config
+        user_config = tmp_path / "config.user.yaml"
+        user_config.write_text(
+            """
+llm:
+  provider: zai
+  model: test
+  api_key: test
+default_agent: pickle
+"""
+        )
+
+        # Write runtime config
+        runtime_config = tmp_path / "config.runtime.yaml"
+        runtime_config.write_text(
+            """
+routing:
+  bindings:
+    - agent: cookie
+      value: "telegram:123456"
+sources:
+  "telegram:123456":
+    session_id: "uuid-abc"
+"""
+        )
+
+        config = Config.load(tmp_path)
+
+        assert len(config.routing["bindings"]) == 1
+        assert config.routing["bindings"][0]["agent"] == "cookie"
+        assert config.sources["telegram:123456"]["session_id"] == "uuid-abc"
