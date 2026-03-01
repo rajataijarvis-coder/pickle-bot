@@ -76,7 +76,7 @@ def test_server_uses_context_queue():
     context.config.api = None
 
     with (
-        patch("picklebot.server.server.AgentDispatcherWorker"),
+        patch("picklebot.server.server.AgentWorker"),
         patch("picklebot.server.server.CronWorker"),
     ):
         server = Server(context)

@@ -1,12 +1,12 @@
 """Tests for post_message tool factory."""
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
 from picklebot.tools.post_message_tool import create_post_message_tool
-from picklebot.frontend.base import SilentFrontend
 from picklebot.utils.config import Config, MessageBusConfig, TelegramConfig
+from picklebot.core.events import OutboundEvent, EventType
 
 
 def _make_context_with_messagebus(
@@ -60,6 +60,16 @@ You are a test assistant.
     return SharedContext(config)
 
 
+def _make_mock_session(
+    session_id: str = "test-session-123", agent_id: str = "test-agent"
+):
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = session_id
+    mock_session.agent_id = agent_id
+    return mock_session
+
+
 class TestCreatePostMessageTool:
     """Tests for create_post_message_tool factory function."""
 
@@ -85,33 +95,60 @@ class TestPostMessageToolExecution:
     """Tests for post_message tool execution."""
 
     @pytest.mark.anyio
-    async def test_sends_message_to_default_platform(self):
-        """Should send message to default_platform using post()."""
-
+    async def test_uses_session_for_event(self):
+        """Should use session info for session_id and source."""
         context = _make_context_with_messagebus(
             enabled=True, default_platform="telegram"
         )
 
-        # Find the telegram bus and mock its post method
-        telegram_bus = next(
-            (b for b in context.messagebus_buses if b.platform_name == "telegram"), None
-        )
-        assert telegram_bus is not None
+        # Mock the eventbus.publish method
+        original_publish = context.eventbus.publish
+        context.eventbus.publish = AsyncMock()
 
-        # Mock post
-        original_post = telegram_bus.post
-        telegram_bus.post = AsyncMock()
-
+        mock_session = _make_mock_session()
         tool = create_post_message_tool(context)
         assert tool is not None
 
-        frontend = SilentFrontend()
-        result = await tool.execute(frontend=frontend, content="Hello from agent!")
+        result = await tool.execute(session=mock_session, content="Hello from agent!")
 
-        telegram_bus.post.assert_called_once_with(
-            content="Hello from agent!", target=None
-        )
-        assert "sent" in result.lower() or "success" in result.lower()
+        # Verify publish was called
+        context.eventbus.publish.assert_called_once()
+        call_args = context.eventbus.publish.call_args
+        event = call_args[0][0]
+
+        # Verify event uses session info
+        assert isinstance(event, OutboundEvent)
+        assert event.type == EventType.OUTBOUND
+        assert event.session_id == "test-session-123"
+        assert event.agent_id == "test-agent"
+        assert event.source == "agent:test-agent"
+        assert event.content == "Hello from agent!"
+
+        # Verify result message
+        assert "queued" in result.lower() or "success" in result.lower()
 
         # Restore
-        telegram_bus.post = original_post
+        context.eventbus.publish = original_publish
+
+    @pytest.mark.anyio
+    async def test_returns_error_on_exception(self):
+        """Should return error message if publishing fails."""
+        context = _make_context_with_messagebus(
+            enabled=True, default_platform="telegram"
+        )
+
+        # Mock the eventbus.publish to raise an exception
+        original_publish = context.eventbus.publish
+        context.eventbus.publish = AsyncMock(side_effect=Exception("Test error"))
+
+        mock_session = _make_mock_session()
+        tool = create_post_message_tool(context)
+        assert tool is not None
+
+        result = await tool.execute(session=mock_session, content="Hello from agent!")
+
+        # Verify error message
+        assert "failed" in result.lower() or "error" in result.lower()
+
+        # Restore
+        context.eventbus.publish = original_publish

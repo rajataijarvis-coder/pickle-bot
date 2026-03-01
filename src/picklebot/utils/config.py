@@ -131,6 +131,7 @@ class Config(BaseModel):
     skills_path: Path = Field(default=Path("skills"))
     logging_path: Path = Field(default=Path(".logs"))
     history_path: Path = Field(default=Path(".history"))
+    event_path: Path = Field(default=Path(".event"))
     crons_path: Path = Field(default=Path("crons"))
     memories_path: Path = Field(default=Path("memories"))
     messagebus: MessageBusConfig = Field(default_factory=MessageBusConfig)
@@ -149,6 +150,7 @@ class Config(BaseModel):
             "skills_path",
             "logging_path",
             "history_path",
+            "event_path",
             "crons_path",
             "memories_path",
         ):
@@ -173,25 +175,34 @@ class Config(BaseModel):
             FileNotFoundError: If config directory doesn't exist
             ValidationError: If configuration is invalid
         """
+        config_data = cls._load_merged_configs(workspace_dir)
+        config_data["workspace"] = workspace_dir
+        return cls.model_validate(config_data)
 
-        config_data: dict = {"workspace": workspace_dir}
+    @classmethod
+    def _load_merged_configs(cls, workspace_dir: Path) -> dict[str, Any]:
+        """Load and merge user and runtime config files.
+
+        Args:
+            workspace_dir: Directory containing config files
+
+        Returns:
+            Merged configuration dict from YAML files only
+        """
+        config_data: dict[str, Any] = {}
 
         user_config = workspace_dir / "config.user.yaml"
         runtime_config = workspace_dir / "config.runtime.yaml"
 
         if user_config.exists():
             with open(user_config) as f:
-                user_data = yaml.safe_load(f) or {}
-            config_data = cls._deep_merge(config_data, user_data)
+                config_data = cls._deep_merge(config_data, yaml.safe_load(f) or {})
 
-        # Deep merge runtime config (overrides user)
         if runtime_config.exists():
             with open(runtime_config) as f:
-                runtime_data = yaml.safe_load(f) or {}
-            config_data = cls._deep_merge(config_data, runtime_data)
+                config_data = cls._deep_merge(config_data, yaml.safe_load(f) or {})
 
-        # Validate and create Config instance
-        return cls.model_validate(config_data)
+        return config_data
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -251,22 +262,6 @@ class Config(BaseModel):
         with open(config_path, "w") as f:
             yaml.dump(data, f)
 
-    def _update_in_memory(self, key: str, value: Any) -> None:
-        """Update in-memory config, supporting nested attributes and dict keys."""
-        keys = key.split(".")
-        obj = self
-        for k in keys[:-1]:
-            if isinstance(obj, dict):
-                obj = obj[k]
-            else:
-                obj = getattr(obj, k)
-
-        final_key = keys[-1]
-        if isinstance(obj, dict):
-            obj[final_key] = value
-        else:
-            setattr(obj, final_key, value)
-
     def set_user(self, key: str, value: Any) -> None:
         """
         Update a config value in config.user.yaml.
@@ -276,7 +271,6 @@ class Config(BaseModel):
             value: New value
         """
         self._set_config_value(self.workspace / "config.user.yaml", key, value)
-        self._update_in_memory(key, value)
 
     def set_runtime(self, key: str, value: Any) -> None:
         """
@@ -287,7 +281,6 @@ class Config(BaseModel):
             value: New value
         """
         self._set_config_value(self.workspace / "config.runtime.yaml", key, value)
-        self._update_in_memory(key, value)
 
     def reload(self) -> bool:
         """
@@ -297,20 +290,8 @@ class Config(BaseModel):
             True if reload succeeded, False if file not found or invalid
         """
         try:
-            user_config = self.workspace / "config.user.yaml"
-            runtime_config = self.workspace / "config.runtime.yaml"
-
-            config_data: dict[str, Any] = {"workspace": self.workspace}
-
-            if user_config.exists():
-                with open(user_config) as f:
-                    user_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, user_data)
-
-            if runtime_config.exists():
-                with open(runtime_config) as f:
-                    runtime_data = yaml.safe_load(f) or {}
-                config_data = self._deep_merge(config_data, runtime_data)
+            config_data = self._load_merged_configs(self.workspace)
+            config_data["workspace"] = self.workspace
 
             # Create new instance and copy values
             new_config = Config.model_validate(config_data)
@@ -342,21 +323,16 @@ class ConfigReloader:
 
     def __init__(self, config: Config):
         self._config = config
-        self._observer: Observer | None = None
+        self._observer = Observer()
 
     def start(self) -> None:
         """Start watching config file for changes."""
-        if self._observer is not None:
-            return
-
-        self._observer = Observer()
         handler = ConfigHandler(self._config)
         self._observer.schedule(handler, str(self._config.workspace), recursive=False)
         self._observer.start()
 
     def stop(self) -> None:
         """Stop watching."""
-        if self._observer is not None:
-            self._observer.stop()
-            self._observer.join()
-            self._observer = None
+        self._observer.stop()
+        self._observer.join()
+        del self._observer

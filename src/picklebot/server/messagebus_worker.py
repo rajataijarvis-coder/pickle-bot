@@ -1,11 +1,12 @@
 """MessageBus worker for ingesting platform messages."""
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
-from picklebot.frontend.base import Frontend
-from picklebot.server.base import Worker, Job
+from .worker import Worker
 from picklebot.core.agent import SessionMode, Agent
+from picklebot.core.events import InboundEvent, Source
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
@@ -13,12 +14,15 @@ if TYPE_CHECKING:
 
 
 class MessageBusWorker(Worker):
-    """Ingests messages from platforms, dispatches to agent queue."""
+    """Ingests messages from platforms, publishes INBOUND events to EventBus."""
 
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
         self.buses = context.messagebus_buses
         self.bus_map = {bus.platform_name: bus for bus in self.buses}
+
+        # CLI session ID (CLI only has one session per worker)
+        self._cli_session_id: str | None = None
 
         # Load default agent for session creation
         try:
@@ -29,28 +33,23 @@ class MessageBusWorker(Worker):
             raise RuntimeError(f"Failed to initialize MessageBusWorker: {e}") from e
 
     def _get_or_create_session_id(self, platform: str, user_id: str) -> str:
-        """Get existing session_id or create new session for this user.
-
-        For CLI platform, always creates a new session (no persistence needed).
-        """
-        # CLI doesn't need session persistence - just create a new session each time
+        """Get existing session_id or create new session for this user."""
+        # CLI has a single session stored in the worker
         if platform == "cli":
-            session = self.agent.new_session(SessionMode.CHAT)
+            if not self._cli_session_id:
+                session = self.agent.new_session(SessionMode.CHAT)
+                self._cli_session_id = session.session_id
             return session.session_id
 
+        # Other platforms use typed config
         platform_config = getattr(self.context.config.messagebus, platform, None)
-        if not platform_config:
-            raise ValueError(f"No config for platform: {platform}")
+        if platform_config:
+            session_id = platform_config.sessions.get(user_id)
+            if session_id:
+                return session_id
 
-        session_id = platform_config.sessions.get(user_id)
-
-        if session_id:
-            return session_id
-
-        # No session - create new (creates in HistoryStore)
+        # No existing session - create new
         session = self.agent.new_session(SessionMode.CHAT)
-
-        # Persist session_id to runtime config
         self.context.config.set_runtime(
             f"messagebus.{platform}.sessions.{user_id}", session.session_id
         )
@@ -98,21 +97,17 @@ class MessageBusWorker(Worker):
                 user_id = context.user_id
                 session_id = self._get_or_create_session_id(platform, user_id)
 
-                frontend = Frontend.for_bus(bus, context)
-                block_on_response = bus.platform_name == "cli"
-
-                job = Job(
+                # Publish INBOUND event with typed context
+                event = InboundEvent(
                     session_id=session_id,
-                    agent_id=self.agent_def.id,
-                    message=message,
-                    frontend=frontend,
-                    mode=SessionMode.CHAT,
+                    agent_id=self.context.config.default_agent,
+                    source=Source.platform(platform, user_id),
+                    content=message,
+                    timestamp=time.time(),
+                    context=context,
                 )
-                await self.context.agent_queue.put(job)
-                self.logger.debug(f"Dispatched message from {platform}")
-
-                if block_on_response:
-                    await job.result_future
+                await self.context.eventbus.publish(event)
+                self.logger.debug(f"Published INBOUND event from {event.source}")
 
             except Exception as e:
                 self.logger.error(f"Error processing message from {platform}: {e}")

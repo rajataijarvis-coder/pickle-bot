@@ -1,12 +1,14 @@
 """Post message tool factory for agent-initiated messaging."""
 
+import time
 from typing import TYPE_CHECKING
 
+from picklebot.core.events import OutboundEvent, Source
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:
+    from picklebot.core.agent import AgentSession
     from picklebot.core.context import SharedContext
-    from picklebot.frontend import Frontend
 
 
 def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
@@ -29,6 +31,8 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
     default_platform = config.messagebus.default_platform
     if default_platform is None:
         return None
+
+    # Verify the bus exists
     bus_map = {bus.platform_name: bus for bus in context.messagebus_buses}
     default_bus = bus_map.get(default_platform)
 
@@ -49,20 +53,28 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             "required": ["content"],
         },
     )
-    async def post_message(frontend: "Frontend", content: str) -> str:
+    async def post_message(content: str, session: "AgentSession") -> str:
         """
         Send a message to the default user on the default platform.
 
         Args:
-            frontend: Frontend for displaying output
             content: Message content to send
+            session: The agent session context
 
         Returns:
             Success or error message
         """
         try:
-            await default_bus.post(content=content, target=None)
-            return f"Message sent successfully to {default_platform}"
+            # Publish OUTBOUND event for the DeliveryWorker to handle
+            event = OutboundEvent(
+                session_id=session.session_id,
+                agent_id=session.agent_id,
+                source=Source.agent(session.agent_id),
+                content=content,
+                timestamp=time.time(),
+            )
+            await context.eventbus.publish(event)
+            return f"Message queued for delivery to {default_platform}"
         except Exception as e:
             return f"Failed to send message: {e}"
 

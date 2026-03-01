@@ -19,21 +19,23 @@ class TestServer:
         server = Server(context)
 
         assert server.context == context
-        assert context.agent_queue is not None  # Queue is in context, not server
         assert server.workers == []
 
     @pytest.mark.anyio
     async def test_server_setup_workers_when_messagebus_disabled(self, test_config):
-        """Server sets up AgentDispatcherWorker and CronWorker when messagebus disabled."""
+        """Server sets up core workers when messagebus disabled."""
         context = SharedContext(test_config)
         server = Server(context)
         server._setup_workers()
 
-        # Should have 2 workers: AgentDispatcherWorker and CronWorker
-        assert len(server.workers) == 2
+        # Should have 5 core workers: EventBus, AgentWorker, CronWorker, DeliveryWorker, WebSocketWorker
+        assert len(server.workers) == 5
         worker_types = [w.__class__.__name__ for w in server.workers]
-        assert "AgentDispatcherWorker" in worker_types
+        assert "EventBus" in worker_types
+        assert "AgentWorker" in worker_types
+        assert "DeliveryWorker" in worker_types
         assert "CronWorker" in worker_types
+        assert "WebSocketWorker" in worker_types
         assert "MessageBusWorker" not in worker_types
 
     @pytest.mark.anyio
@@ -51,11 +53,14 @@ class TestServer:
             server = Server(context)
             server._setup_workers()
 
-            # Should have 3 workers: AgentDispatcherWorker, CronWorker, and MessageBusWorker
-            assert len(server.workers) == 3
+            # Should have 6 workers: 5 core + MessageBusWorker
+            assert len(server.workers) == 6
             worker_types = [w.__class__.__name__ for w in server.workers]
-            assert "AgentDispatcherWorker" in worker_types
+            assert "EventBus" in worker_types
+            assert "AgentWorker" in worker_types
+            assert "DeliveryWorker" in worker_types
             assert "CronWorker" in worker_types
+            assert "WebSocketWorker" in worker_types
             assert mock_worker_class.called  # MessageBusWorker was created
 
     @pytest.mark.anyio
@@ -73,9 +78,12 @@ class TestServer:
         server = Server(context)
         server._setup_workers()
 
-        # Should have only 2 workers: AgentDispatcherWorker and CronWorker
-        assert len(server.workers) == 2
+        # Should have 5 core workers (no MessageBusWorker)
+        assert len(server.workers) == 5
         worker_types = [w.__class__.__name__ for w in server.workers]
-        assert "AgentDispatcherWorker" in worker_types
+        assert "EventBus" in worker_types
+        assert "AgentWorker" in worker_types
+        assert "DeliveryWorker" in worker_types
         assert "CronWorker" in worker_types
+        assert "WebSocketWorker" in worker_types
         assert "MessageBusWorker" not in worker_types

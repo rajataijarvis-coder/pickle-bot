@@ -1,52 +1,65 @@
-"""Tests for AgentDispatcherWorker and SessionExecutor."""
+"""Tests for AgentWorker and SessionExecutor."""
 
 import asyncio
 import shutil
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
+import time
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from picklebot.core.agent import SessionMode
-from picklebot.frontend.base import SilentFrontend
 from picklebot.server.agent_worker import (
     MAX_RETRIES,
-    AgentDispatcherWorker,
+    AgentWorker,
     SessionExecutor,
 )
-from picklebot.server.base import Job
+from picklebot.core.events import (
+    EventType,
+    InboundEvent,
+    DispatchEvent,
+    DispatchResultEvent,
+)
 
 
-class FakeFrontend:
-    """Fake frontend for testing."""
+def make_inbound_event(
+    content: str = "Test",
+    session_id: str | None = None,
+    agent_id: str = "test-agent",
+    retry_count: int = 0,
+) -> InboundEvent:
+    """Helper to create an InboundEvent for testing."""
+    return InboundEvent(
+        session_id=session_id or str(uuid.uuid4()),
+        agent_id=agent_id,
+        source="test:platform",
+        content=content,
+        timestamp=time.time(),
+        retry_count=retry_count,
+    )
 
-    def __init__(self):
-        self.messages: list[str] = []
 
-    async def show_message(self, content: str, agent_id: str | None = None) -> None:
-        self.messages.append(content)
-
-    async def show_welcome(self) -> None:
-        pass
-
-    async def show_system_message(self, content: str) -> None:
-        pass
-
-    @asynccontextmanager
-    async def show_transient(self, content: str) -> AsyncIterator[None]:
-        yield
-
-    @asynccontextmanager
-    async def show_dispatch(
-        self, calling_agent: str, target_agent: str, task: str
-    ) -> AsyncIterator[None]:
-        yield
+def make_dispatch_event(
+    content: str = "Test",
+    session_id: str | None = None,
+    agent_id: str = "test-agent",
+    retry_count: int = 0,
+    parent_session_id: str = "parent-session-123",
+) -> DispatchEvent:
+    """Helper to create a DispatchEvent for testing."""
+    return DispatchEvent(
+        session_id=session_id or str(uuid.uuid4()),
+        agent_id=agent_id,
+        source="agent:caller",
+        content=content,
+        timestamp=time.time(),
+        parent_session_id=parent_session_id,
+        retry_count=retry_count,
+    )
 
 
 @pytest.mark.anyio
-async def test_agent_worker_processes_job(test_context, tmp_path):
-    """AgentDispatcherWorker processes a job from the queue."""
+async def test_agent_worker_processes_event(test_context, tmp_path):
+    """AgentWorker processes an event."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -62,51 +75,55 @@ You are a test assistant. Respond briefly.
 """
     )
 
-    router = AgentDispatcherWorker(test_context)
+    router = AgentWorker(test_context)
 
-    job = Job(
-        session_id=None,
-        agent_id="test-agent",
-        message="Say hello",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
-    await test_context.agent_queue.put(job)
-
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    event = make_inbound_event(content="Say hello", agent_id="test-agent")
+    await router._dispatch_event(event)
 
     await asyncio.sleep(0.5)
 
-    assert job.session_id is not None
-
 
 @pytest.mark.anyio
-async def test_agent_job_router_does_not_requeue_nonexistent_agent(test_context):
-    """AgentDispatcherWorker does not requeue job when agent doesn't exist."""
-    router = AgentDispatcherWorker(test_context)
+async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
+    """AgentWorker publishes RESULT with error when agent doesn't exist."""
+    router = AgentWorker(test_context)
 
-    job = Job(
-        session_id=None,
-        agent_id="nonexistent",
-        message="Test",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
-    await test_context.agent_queue.put(job)
+    # Track RESULT events
+    result_events: list[DispatchResultEvent] = []
 
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    async def capture_result(event: DispatchResultEvent) -> None:
+        result_events.append(event)
 
-    assert job.message == "Test"
-    assert test_context.agent_queue.empty()
+    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
+
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        event = make_dispatch_event(agent_id="nonexistent", session_id="test-job-id")
+        await router._dispatch_event(event)
+
+        # Wait for async error result to be published
+        await asyncio.sleep(0.1)
+
+        # Should have published RESULT with error
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert isinstance(result_event, DispatchResultEvent)
+        assert result_event.session_id == "test-job-id"
+        assert result_event.error is not None
+        assert "nonexistent" in result_event.error
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
 async def test_session_executor_requeues_on_transient_error(test_context, tmp_path):
-    """SessionExecutor requeues job with '.' message on transient errors."""
+    """SessionExecutor requeues via INBOUND event on transient errors."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -125,24 +142,41 @@ You are a test assistant.
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
 
-    class ErrorFrontend(FakeFrontend):
-        async def show_message(self, content: str, agent_id: str | None = None) -> None:
-            raise RuntimeError("Transient error")
+    event = make_inbound_event(content="Test", agent_id="test-agent")
 
-    job = Job(
-        session_id=None,
-        agent_id="test-agent",
-        message="Test",
-        frontend=ErrorFrontend(),
-        mode=SessionMode.CHAT,
-    )
+    # Track inbound events for retry
+    inbound_events: list[InboundEvent] = []
 
-    executor = SessionExecutor(test_context, agent_def, job, semaphore)
+    async def capture_event(evt: InboundEvent) -> None:
+        inbound_events.append(evt)
 
-    await executor.run()
+    test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
 
-    assert job.message == "."
-    assert not test_context.agent_queue.empty()
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        executor = SessionExecutor(test_context, agent_def, event, semaphore)
+
+        # Mock the Agent to raise an error
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = RuntimeError("Transient error")
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(inbound_events) == 1
+        retry_event = inbound_events[0]
+        assert isinstance(retry_event, InboundEvent)
+        assert retry_event.retry_count == 1
+        assert retry_event.content == "."
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
@@ -167,18 +201,13 @@ You are a test assistant.
     semaphore = asyncio.Semaphore(1)
 
     nonexistent_session_id = "nonexistent-session-uuid"
-    job = Job(
-        session_id=nonexistent_session_id,
-        agent_id="test-agent",
-        message="Test",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
+    event = make_inbound_event(
+        content="Test", session_id=nonexistent_session_id, agent_id="test-agent"
     )
 
-    executor = SessionExecutor(test_context, agent_def, job, semaphore)
+    executor = SessionExecutor(test_context, agent_def, event, semaphore)
     await executor.run()
 
-    assert job.session_id == nonexistent_session_id
     session_ids = [s.id for s in test_context.history_store.list_sessions()]
     assert nonexistent_session_id in session_ids
 
@@ -186,7 +215,6 @@ You are a test assistant.
 @pytest.mark.anyio
 async def test_session_executor_runs_session(test_context, tmp_path):
     """SessionExecutor runs a session successfully."""
-    # Create a test agent definition
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -202,25 +230,13 @@ You are a test assistant. Respond briefly.
 """
     )
 
-    # Load the agent definition
     agent_def = test_context.agent_loader.load("test-agent")
-
-    # Create a semaphore (value=1 for single concurrency)
     semaphore = asyncio.Semaphore(1)
 
-    # Create a job
-    job = Job(
-        session_id=None,
-        agent_id="test-agent",
-        message="Say hello",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
+    event = make_inbound_event(content="Say hello", agent_id="test-agent")
 
-    executor = SessionExecutor(test_context, agent_def, job, semaphore)
+    executor = SessionExecutor(test_context, agent_def, event, semaphore)
     await executor.run()
-
-    assert job.session_id is not None
 
 
 @pytest.mark.anyio
@@ -241,23 +257,15 @@ You are a test assistant.
     )
 
     agent_def = test_context.agent_loader.load("test-agent")
-
-    # Create a semaphore with value 1
     semaphore = asyncio.Semaphore(1)
 
-    job = Job(
-        session_id=None,
-        agent_id="test-agent",
-        message="Test",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
+    event = make_inbound_event(content="Test", agent_id="test-agent")
 
     # Acquire the semaphore first
     await semaphore.acquire()
 
     # Start executor - it should wait
-    executor = SessionExecutor(test_context, agent_def, job, semaphore)
+    executor = SessionExecutor(test_context, agent_def, event, semaphore)
     task = asyncio.create_task(executor.run())
 
     # Give it a moment to start waiting
@@ -272,13 +280,10 @@ You are a test assistant.
     # Now task should complete
     await task
 
-    # Clean up
-    assert job.session_id is not None
-
 
 @pytest.mark.anyio
-async def test_agent_job_router_creates_semaphore_per_agent(test_context, tmp_path):
-    """AgentDispatcherWorker creates a semaphore for each agent on first job."""
+async def test_agent_router_creates_semaphore_per_agent(test_context, tmp_path):
+    """AgentWorker creates a semaphore for each agent on first event."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
 
@@ -296,43 +301,21 @@ You are {agent_name}.
 """
         )
 
-    router = AgentDispatcherWorker(test_context)
+    router = AgentWorker(test_context)
 
     # Initially no semaphores
     assert len(router._semaphores) == 0
 
-    # Create jobs for both agents
-    job_a = Job(
-        session_id=None,
-        agent_id="agent-a",
-        message="Test A",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
-    job_b = Job(
-        session_id=None,
-        agent_id="agent-b",
-        message="Test B",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
+    event_a = make_inbound_event(content="Test A", agent_id="agent-a")
+    event_b = make_inbound_event(content="Test B", agent_id="agent-b")
 
-    await test_context.agent_queue.put(job_a)
-    await test_context.agent_queue.put(job_b)
-
-    # Process one job to trigger semaphore creation
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    await router._dispatch_event(event_a)
 
     # Should have semaphore for agent-a
     assert "agent-a" in router._semaphores
     assert router._semaphores["agent-a"]._value == 2  # type: ignore
 
-    # Process second job
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    await router._dispatch_event(event_b)
 
     # Should have semaphores for both agents
     assert "agent-b" in router._semaphores
@@ -343,8 +326,8 @@ You are {agent_name}.
 
 
 @pytest.mark.anyio
-async def test_agent_job_router_concurrent_agents_dont_block(test_context, tmp_path):
-    """AgentDispatcherWorker allows concurrent agents to run without blocking each other."""
+async def test_agent_router_concurrent_agents_dont_block(test_context, tmp_path):
+    """AgentWorker allows concurrent agents to run without blocking each other."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
 
@@ -362,47 +345,21 @@ You are {agent_name}.
 """
         )
 
-    router = AgentDispatcherWorker(test_context)
+    router = AgentWorker(test_context)
 
-    # Create jobs for both agents
-    job_a = Job(
-        session_id=None,
-        agent_id="agent-a",
-        message="Test A",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
-    job_b = Job(
-        session_id=None,
-        agent_id="agent-b",
-        message="Test B",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
+    event_a = make_inbound_event(content="Test A", agent_id="agent-a")
+    event_b = make_inbound_event(content="Test B", agent_id="agent-b")
 
-    await test_context.agent_queue.put(job_a)
-    await test_context.agent_queue.put(job_b)
-
-    # Dispatch both jobs
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
-
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    await router._dispatch_event(event_a)
+    await router._dispatch_event(event_b)
 
     # Both should be able to run concurrently (different agents)
     await asyncio.sleep(0.5)
 
-    # Both sessions should be created
-    assert job_a.session_id is not None
-    assert job_b.session_id is not None
-
 
 @pytest.mark.anyio
 async def test_semaphore_cleanup_removes_stale_semaphores(test_context, tmp_path):
-    """AgentDispatcherWorker removes semaphores for deleted agents when threshold exceeded."""
+    """AgentWorker removes semaphores for deleted agents when threshold exceeded."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
 
@@ -419,21 +376,12 @@ You are agent {i}.
 """
         )
 
-    router = AgentDispatcherWorker(test_context)
+    router = AgentWorker(test_context)
 
-    # Dispatch jobs for all agents to create semaphores
+    # Dispatch events for all agents to create semaphores
     for i in range(6):
-        job = Job(
-            session_id=None,
-            agent_id=f"agent-{i}",
-            message="Test",
-            frontend=FakeFrontend(),
-            mode=SessionMode.CHAT,
-        )
-        await test_context.agent_queue.put(job)
-        j = await test_context.agent_queue.get()
-        router._dispatch_job(j)
-        test_context.agent_queue.task_done()
+        event = make_inbound_event(content="Test", agent_id=f"agent-{i}")
+        await router._dispatch_event(event)
 
     await asyncio.sleep(0.3)  # Let tasks start
 
@@ -443,20 +391,11 @@ You are agent {i}.
     # Delete agent-5
     shutil.rmtree(agents_dir / "agent-5")
 
-    # Trigger cleanup by dispatching another job
-    job = Job(
-        session_id=None,
-        agent_id="agent-0",
-        message="Test",
-        frontend=FakeFrontend(),
-        mode=SessionMode.CHAT,
-    )
-    await test_context.agent_queue.put(job)
-    j = await test_context.agent_queue.get()
-    router._dispatch_job(j)
-    test_context.agent_queue.task_done()
+    # Trigger cleanup by dispatching another event
+    event = make_inbound_event(content="Test", agent_id="agent-0")
+    await router._dispatch_event(event)
 
-    # Call cleanup explicitly (in run() this happens after task_done())
+    # Call cleanup explicitly (in run() this happens after sleep)
     router._maybe_cleanup_semaphores()
 
     # agent-5 semaphore should be cleaned up
@@ -465,13 +404,13 @@ You are agent {i}.
 
 
 # ============================================================================
-# Tests for Task 3: result future and retry logic
+# Tests for RESULT event and retry logic
 # ============================================================================
 
 
 @pytest.mark.anyio
-async def test_session_executor_sets_result_on_success(test_context, tmp_path):
-    """SessionExecutor should set result on future when session succeeds."""
+async def test_session_executor_publishes_result_on_success(test_context, tmp_path):
+    """SessionExecutor should publish RESULT event when session succeeds."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -490,34 +429,56 @@ You are a test assistant.
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
 
-    job = Job(
-        session_id=None,
+    event = make_dispatch_event(
+        content="hello",
         agent_id="test-agent",
-        message="hello",
-        frontend=SilentFrontend(),
-        mode=SessionMode.CHAT,
+        session_id="test-job-123",
     )
-    job.result_future = asyncio.Future()  # Create future in async context
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        mock_session = AsyncMock()
-        mock_session.chat = AsyncMock(return_value="response text")
-        mock_session.session_id = "session-123"
+    # Track RESULT events
+    result_events: list[DispatchResultEvent] = []
 
-        mock_agent = MagicMock()
-        mock_agent.new_session.return_value = mock_session
-        MockAgent.return_value = mock_agent
+    async def capture_result(evt: DispatchResultEvent) -> None:
+        result_events.append(evt)
 
-        executor = SessionExecutor(test_context, agent_def, job, semaphore)
-        await executor.run()
+    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
 
-    assert job.result_future.done()
-    assert job.result_future.result() == "response text"
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            mock_session = AsyncMock()
+            mock_session.chat = AsyncMock(return_value="response text")
+            mock_session.session_id = "session-123"
+
+            mock_agent = MagicMock()
+            mock_agent.new_session.return_value = mock_session
+            mock_agent.resume_session.return_value = mock_session
+            MockAgent.return_value = mock_agent
+
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert isinstance(result_event, DispatchResultEvent)
+        assert result_event.content == "response text"
+        assert result_event.session_id == "test-job-123"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
 async def test_session_executor_requeues_on_first_failure(test_context, tmp_path):
-    """SessionExecutor should requeue job with incremented retry_count on failure."""
+    """SessionExecutor should requeue via event with incremented retry_count on failure."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -536,33 +497,48 @@ You are a test assistant.
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
 
-    job = Job(
-        session_id=None,
-        agent_id="test-agent",
-        message="hello",
-        frontend=SilentFrontend(),
-        mode=SessionMode.CHAT,
-        retry_count=0,
-    )
-    job.result_future = asyncio.Future()
+    event = make_inbound_event(content="hello", agent_id="test-agent", retry_count=0)
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        MockAgent.side_effect = Exception("boom")
+    # Track inbound events for retry
+    inbound_events: list[InboundEvent] = []
 
-        executor = SessionExecutor(test_context, agent_def, job, semaphore)
-        await executor.run()
+    async def capture_event(evt: InboundEvent) -> None:
+        inbound_events.append(evt)
 
-    # Job should be requeued
-    requeued_job = await test_context.agent_queue.get()
-    assert requeued_job.retry_count == 1
-    assert requeued_job.message == "."
+    test_context.eventbus.subscribe(EventType.INBOUND, capture_event)
+
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = Exception("boom")
+
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        # Should be requeued via INBOUND event
+        assert len(inbound_events) == 1
+        retry_event = inbound_events[0]
+        assert isinstance(retry_event, InboundEvent)
+        assert retry_event.retry_count == 1
+        assert retry_event.content == "."
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.anyio
-async def test_session_executor_sets_exception_after_max_retries(
+async def test_session_executor_publishes_result_with_error_after_max_retries(
     test_context, tmp_path
 ):
-    """SessionExecutor should set exception after MAX_RETRIES failures."""
+    """SessionExecutor should publish RESULT event with error after MAX_RETRIES failures."""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
     test_agent_dir = agents_dir / "test-agent"
@@ -581,46 +557,111 @@ You are a test assistant.
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
 
-    job = Job(
-        session_id=None,
+    event = make_dispatch_event(
+        content="hello",
         agent_id="test-agent",
-        message="hello",
-        frontend=SilentFrontend(),
-        mode=SessionMode.CHAT,
-        retry_count=MAX_RETRIES,  # Already at max
+        retry_count=MAX_RETRIES,
+        session_id="job-456",
     )
-    job.result_future = asyncio.Future()
 
-    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
-        MockAgent.side_effect = Exception("final boom")
+    # Track RESULT events
+    result_events: list[DispatchResultEvent] = []
 
-        executor = SessionExecutor(test_context, agent_def, job, semaphore)
-        await executor.run()
+    async def capture_result(evt: DispatchResultEvent) -> None:
+        result_events.append(evt)
 
-    assert job.result_future.done()
-    assert isinstance(job.result_future.exception(), Exception)
-    assert str(job.result_future.exception()) == "final boom"
+    test_context.eventbus.subscribe(EventType.DISPATCH_RESULT, capture_result)
 
-    # Should NOT be requeued
-    assert test_context.agent_queue.empty()
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+            MockAgent.side_effect = Exception("final boom")
+
+            executor = SessionExecutor(test_context, agent_def, event, semaphore)
+            await executor.run()
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        assert len(result_events) == 1
+        result_event = result_events[0]
+        assert isinstance(result_event, DispatchResultEvent)
+        assert result_event.session_id == "job-456"
+        assert result_event.error is not None
+        assert result_event.error == "final boom"
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
 
 
 # ============================================================================
-# Tests for Task 4: AgentDispatcherWorker uses context.agent_queue
+# Tests for AgentWorker event handling
 # ============================================================================
 
 
 @pytest.mark.anyio
-async def test_agent_dispatcher_uses_context_queue():
-    """AgentDispatcherWorker should get queue from context."""
-    context = MagicMock()
-    context.agent_queue = asyncio.Queue()
-    context.agent_loader.discover_agents.return_value = []
+async def test_agent_dispatcher_handles_inbound_event(test_context):
+    """AgentWorker should handle INBOUND events."""
+    router = AgentWorker(test_context)
 
-    dispatcher = AgentDispatcherWorker(context)
+    # Track dispatched events
+    dispatched_events: list[InboundEvent] = []
 
-    # Should not have its own agent_queue attribute separate from context
-    assert (
-        not hasattr(dispatcher, "agent_queue")
-        or dispatcher.agent_queue is context.agent_queue
+    async def capture_dispatch(evt: InboundEvent) -> None:
+        dispatched_events.append(evt)
+        # Don't actually execute, just capture
+
+    router._dispatch_event = capture_dispatch  # type: ignore
+
+    event = InboundEvent(
+        session_id="test-session",
+        agent_id="test-agent",
+        source="test:platform",
+        content="Hello world",
+        timestamp=time.time(),
     )
+
+    await router.handle_inbound(event)
+
+    assert len(dispatched_events) == 1
+    dispatched = dispatched_events[0]
+    assert isinstance(dispatched, InboundEvent)
+    assert dispatched.content == "Hello world"
+    assert dispatched.session_id == "test-session"
+
+
+@pytest.mark.anyio
+async def test_agent_dispatcher_handles_dispatch_event(test_context):
+    """AgentWorker should handle DISPATCH events."""
+    router = AgentWorker(test_context)
+
+    # Track dispatched events
+    dispatched_events: list[DispatchEvent] = []
+
+    async def capture_dispatch(evt: DispatchEvent) -> None:
+        dispatched_events.append(evt)
+
+    router._dispatch_event = capture_dispatch  # type: ignore
+
+    event = DispatchEvent(
+        session_id="job-session",
+        agent_id="test-agent",
+        source="agent:caller",
+        content="Run task",
+        timestamp=time.time(),
+        parent_session_id="parent-123",
+    )
+
+    await router.handle_dispatch(event)
+
+    assert len(dispatched_events) == 1
+    dispatched = dispatched_events[0]
+    assert isinstance(dispatched, DispatchEvent)
+    assert dispatched.session_id == "job-session"
+    assert dispatched.agent_id == "test-agent"
+    assert dispatched.content == "Run task"

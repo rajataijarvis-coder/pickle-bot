@@ -2,13 +2,22 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock
+import time
+from unittest.mock import MagicMock
 
 import pytest
 
 from picklebot.core.context import SharedContext
-from picklebot.frontend.base import SilentFrontend
 from picklebot.tools.subagent_tool import create_subagent_dispatch_tool
+from picklebot.core.events import EventType, DispatchEvent, DispatchResultEvent
+
+
+def _make_mock_session():
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session"
+    mock_session.agent_id = "test-agent"
+    return mock_session
 
 
 class TestCreateSubagentDispatchTool:
@@ -97,8 +106,8 @@ You are {name}.
         assert "agent-b" not in enum_ids  # Excluded!
 
     @pytest.mark.anyio
-    async def test_tool_dispatches_to_subagent(self, test_config):
-        """Subagent dispatch tool should dispatch through queue and return result + session_id."""
+    async def test_tool_dispatches_and_receives_result_via_eventbus(self, test_config):
+        """Subagent dispatch tool should dispatch via EventBus and receive RESULT."""
         # Create target agent
         agent_dir = test_config.agents_path / "target-agent"
         agent_dir.mkdir(parents=True)
@@ -114,29 +123,66 @@ You are the target agent.
         )
 
         context = SharedContext(config=test_config)
-        _ = context.agent_queue  # Initialize queue
 
         tool_func = create_subagent_dispatch_tool("caller", context)
         assert tool_func is not None
 
-        # Create a task that will resolve the future
-        async def resolve_future():
-            job = await context.agent_queue.get()
-            job.session_id = "test-session-123"
-            job.result_future.set_result("Task completed successfully")
+        # Track dispatched events
+        dispatched_events: list[DispatchEvent] = []
 
-        asyncio.create_task(resolve_future())
+        async def capture_dispatch(event: DispatchEvent) -> None:
+            dispatched_events.append(event)
 
-        # Execute
-        frontend = SilentFrontend()
-        result = await tool_func.execute(
-            frontend=frontend, agent_id="target-agent", task="Do something"
-        )
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Verify
-        parsed = json.loads(result)
-        assert parsed["result"] == "Task completed successfully"
-        assert parsed["session_id"] == "test-session-123"
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
+
+        try:
+            # Create a task that will publish RESULT after DISPATCH is received
+            async def send_result():
+                # Wait for DISPATCH event
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
+
+                # Get the session_id from dispatch event and publish RESULT
+                dispatch_event = dispatched_events[0]
+                session_id = dispatch_event.session_id
+
+                result_event = DispatchResultEvent(
+                    session_id=session_id,
+                    agent_id="target-agent",
+                    source="agent:target-agent",
+                    content="Task completed successfully",
+                    timestamp=time.time(),
+                )
+                await context.eventbus.publish(result_event)
+
+            asyncio.create_task(send_result())
+
+            # Execute
+            mock_session = _make_mock_session()
+            result = await tool_func.execute(
+                session=mock_session, agent_id="target-agent", task="Do something"
+            )
+
+            # Verify DISPATCH event was published
+            assert len(dispatched_events) == 1
+            event = dispatched_events[0]
+            assert isinstance(event, DispatchEvent)
+            assert event.type == EventType.DISPATCH
+            assert event.agent_id == "target-agent"
+
+            # Verify result from RESULT event
+            parsed = json.loads(result)
+            assert parsed["result"] == "Task completed successfully"
+            assert "session_id" in parsed
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.anyio
     async def test_tool_includes_context_in_message(self, test_config):
@@ -156,44 +202,93 @@ You are the target agent.
         )
 
         context = SharedContext(config=test_config)
-        _ = context.agent_queue  # Initialize queue
 
         tool_func = create_subagent_dispatch_tool("caller", context)
         assert tool_func is not None
 
-        captured_job = None
+        # Track dispatched events
+        dispatched_events: list[DispatchEvent] = []
 
-        async def capture_and_resolve():
-            nonlocal captured_job
-            job = await context.agent_queue.get()
-            captured_job = job
-            job.session_id = "test-session-456"
-            job.result_future.set_result("Done")
+        async def capture_dispatch(event: DispatchEvent) -> None:
+            dispatched_events.append(event)
 
-        asyncio.create_task(capture_and_resolve())
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Execute with context
-        frontend = SilentFrontend()
-        await tool_func.execute(
-            frontend=frontend,
-            agent_id="target-agent",
-            task="Review this",
-            context="The code is in src/main.py",
-        )
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
 
-        # Verify context was included in job message
-        assert captured_job is not None
-        assert "Review this" in captured_job.message
-        assert "Context:" in captured_job.message
-        assert "The code is in src/main.py" in captured_job.message
+        try:
+            # Create a task that will publish RESULT
+            async def send_result():
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
 
+                dispatch_event = dispatched_events[0]
+                session_id = dispatch_event.session_id
 
-class TestSubagentDispatchFrontendCalls:
-    """Tests for subagent dispatch frontend method calls."""
+                result_event = DispatchResultEvent(
+                    session_id=session_id,
+                    agent_id="target-agent",
+                    source="agent:target-agent",
+                    content="Done",
+                    timestamp=time.time(),
+                )
+                await context.eventbus.publish(result_event)
+
+            asyncio.create_task(send_result())
+
+            # Execute with context
+            mock_session = _make_mock_session()
+            await tool_func.execute(
+                session=mock_session,
+                agent_id="target-agent",
+                task="Review this",
+                context="The code is in src/main.py",
+            )
+
+            # Verify context was included in DISPATCH event content
+            assert len(dispatched_events) == 1
+            event = dispatched_events[0]
+            assert "Review this" in event.content
+            assert "Context:" in event.content
+            assert "The code is in src/main.py" in event.content
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.anyio
-    async def test_subagent_dispatch_calls_show_dispatch(self, test_config):
-        """Subagent dispatch tool should call frontend.show_dispatch() context manager."""
+    async def test_tool_raises_for_unknown_agent(self, test_config):
+        """Subagent dispatch tool should raise for unknown agent_id."""
+        # Create an agent so tool_func is not None
+        agent_dir = test_config.agents_path / "some-agent"
+        agent_dir.mkdir(parents=True)
+        agent_file = agent_dir / "AGENT.md"
+        agent_file.write_text(
+            """---
+name: Some Agent
+description: An agent
+---
+You are an agent.
+"""
+        )
+
+        context = SharedContext(config=test_config)
+
+        tool_func = create_subagent_dispatch_tool("caller", context)
+        assert tool_func is not None
+
+        mock_session = _make_mock_session()
+        with pytest.raises(ValueError, match="Agent 'unknown-agent' not found"):
+            await tool_func.execute(
+                session=mock_session, agent_id="unknown-agent", task="Do something"
+            )
+
+    @pytest.mark.anyio
+    async def test_tool_raises_on_error_result(self, test_config):
+        """Subagent dispatch tool should raise when RESULT contains error."""
         # Create target agent
         agent_dir = test_config.agents_path / "target-agent"
         agent_dir.mkdir(parents=True)
@@ -209,154 +304,51 @@ You are the target agent.
         )
 
         context = SharedContext(config=test_config)
-        _ = context.agent_queue  # Initialize queue
 
         tool_func = create_subagent_dispatch_tool("caller", context)
         assert tool_func is not None
 
-        # Use a mock frontend to track calls
-        mock_frontend = MagicMock(spec=SilentFrontend)
-        # Setup async context manager mock
-        mock_dispatch_context = AsyncMock()
-        mock_dispatch_context.__aenter__ = AsyncMock(return_value=None)
-        mock_dispatch_context.__aexit__ = AsyncMock(return_value=None)
-        mock_frontend.show_dispatch.return_value = mock_dispatch_context
+        # Track dispatched events
+        dispatched_events: list[DispatchEvent] = []
 
-        # Create a task that will resolve the future
-        async def resolve_future():
-            job = await context.agent_queue.get()
-            job.session_id = "test-session-789"
-            job.result_future.set_result("Task done")
+        async def capture_dispatch(event: DispatchEvent) -> None:
+            dispatched_events.append(event)
 
-        asyncio.create_task(resolve_future())
+        context.eventbus.subscribe(EventType.DISPATCH, capture_dispatch)
 
-        # Execute
-        await tool_func.execute(
-            frontend=mock_frontend,
-            agent_id="target-agent",
-            task="Do something",
-        )
+        # Start EventBus worker to process queued events
+        eventbus_task = context.eventbus.start()
 
-        # Verify show_dispatch was called with correct args
-        mock_frontend.show_dispatch.assert_called_once()
-        call_args = mock_frontend.show_dispatch.call_args
-        # Verify calling agent, target agent, and task are passed
-        assert call_args[0][0] == "caller"  # calling agent
-        assert call_args[0][1] == "target-agent"  # target agent
-        assert call_args[0][2] == "Do something"  # task
+        try:
+            # Create a task that will publish RESULT with error
+            async def send_error():
+                while not dispatched_events:
+                    await asyncio.sleep(0.01)
 
+                dispatch_event = dispatched_events[0]
+                session_id = dispatch_event.session_id
 
-class TestSubagentDispatchQueueMode:
-    """Tests for subagent dispatch queue-based mode (server mode)."""
+                result_event = DispatchResultEvent(
+                    session_id=session_id,
+                    agent_id="target-agent",
+                    source="agent:target-agent",
+                    content="",
+                    timestamp=time.time(),
+                    error="Something went wrong",
+                )
+                await context.eventbus.publish(result_event)
 
-    @pytest.fixture
-    def mock_context_with_queue(self, test_config):
-        """Create a context with a real queue for testing server mode."""
-        # Create target agent
-        agent_dir = test_config.agents_path / "target-agent"
-        agent_dir.mkdir(parents=True)
-        agent_file = agent_dir / "AGENT.md"
-        agent_file.write_text(
-            """---
-name: Target Agent
-description: A target for dispatch testing
----
-You are the target agent.
-"""
-        )
-        context = SharedContext(config=test_config)
-        # Initialize the queue (simulates server mode)
-        _ = context.agent_queue  # This creates the queue lazily
-        return context
+            asyncio.create_task(send_error())
 
-    @pytest.fixture
-    def mock_frontend(self):
-        """Create a mock frontend with show_dispatch context manager."""
-        mock_frontend = MagicMock(spec=SilentFrontend)
-        # Setup async context manager mock
-        mock_dispatch_context = AsyncMock()
-        mock_dispatch_context.__aenter__ = AsyncMock(return_value=None)
-        mock_dispatch_context.__aexit__ = AsyncMock(return_value=None)
-        mock_frontend.show_dispatch.return_value = mock_dispatch_context
-        return mock_frontend
-
-    @pytest.mark.anyio
-    async def test_subagent_dispatch_uses_queue_when_available(
-        self, mock_context_with_queue, mock_frontend
-    ):
-        """subagent_dispatch should dispatch through queue when available."""
-        tool_func = create_subagent_dispatch_tool("caller", mock_context_with_queue)
-        assert tool_func is not None
-
-        # Create a task that will resolve the future
-        async def resolve_future():
-            await asyncio.sleep(0.1)
-            # Get the job from queue and resolve it
-            job = await mock_context_with_queue.agent_queue.get()
-            job.session_id = "test-session"
-            job.result_future.set_result("task completed")
-
-        asyncio.create_task(resolve_future())
-
-        result = await tool_func.execute(
-            frontend=mock_frontend, agent_id="target-agent", task="do something"
-        )
-        assert "task completed" in result
-        assert "test-session" in result
-
-    @pytest.mark.anyio
-    async def test_queue_mode_creates_job_with_correct_fields(
-        self, mock_context_with_queue, mock_frontend
-    ):
-        """Queue mode should create Job with correct agent_id, message, and mode."""
-        tool_func = create_subagent_dispatch_tool("caller", mock_context_with_queue)
-        assert tool_func is not None
-
-        captured_job = None
-
-        async def capture_and_resolve():
-            nonlocal captured_job
-            job = await mock_context_with_queue.agent_queue.get()
-            captured_job = job
-            job.session_id = "captured-session"
-            job.result_future.set_result("done")
-
-        asyncio.create_task(capture_and_resolve())
-
-        await tool_func.execute(
-            frontend=mock_frontend,
-            agent_id="target-agent",
-            task="test task",
-            context="some context",
-        )
-
-        assert captured_job is not None
-        assert captured_job.agent_id == "target-agent"
-        assert "test task" in captured_job.message
-        assert "some context" in captured_job.message
-
-    @pytest.mark.anyio
-    async def test_queue_mode_uses_silent_frontend_for_job(
-        self, mock_context_with_queue, mock_frontend
-    ):
-        """Queue mode should use SilentFrontend for the dispatched job."""
-        tool_func = create_subagent_dispatch_tool("caller", mock_context_with_queue)
-        assert tool_func is not None
-
-        captured_job = None
-
-        async def capture_and_resolve():
-            nonlocal captured_job
-            job = await mock_context_with_queue.agent_queue.get()
-            captured_job = job
-            job.session_id = "silent-session"
-            job.result_future.set_result("silent result")
-
-        asyncio.create_task(capture_and_resolve())
-
-        await tool_func.execute(
-            frontend=mock_frontend, agent_id="target-agent", task="task"
-        )
-
-        assert captured_job is not None
-        assert isinstance(captured_job.frontend, SilentFrontend)
+            # Execute - should raise
+            mock_session = _make_mock_session()
+            with pytest.raises(Exception, match="Something went wrong"):
+                await tool_func.execute(
+                    session=mock_session, agent_id="target-agent", task="Do something"
+                )
+        finally:
+            eventbus_task.cancel()
+            try:
+                await eventbus_task
+            except asyncio.CancelledError:
+                pass

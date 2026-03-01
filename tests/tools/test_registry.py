@@ -1,10 +1,10 @@
 """Tests for ToolRegistry."""
 
 import pytest
+from unittest.mock import MagicMock
 
 from picklebot.tools.registry import ToolRegistry
 from picklebot.tools.base import BaseTool
-from picklebot.frontend.base import SilentFrontend
 
 
 class MockTool(BaseTool):
@@ -15,12 +15,12 @@ class MockTool(BaseTool):
     parameters = {"type": "object", "properties": {}}
 
     def __init__(self):
-        self.last_frontend = None
         self.last_kwargs = None
+        self.last_session = None
 
-    async def execute(self, frontend, **kwargs):
-        """Execute mock tool, store frontend for verification."""
-        self.last_frontend = frontend
+    async def execute(self, session, **kwargs):
+        """Execute mock tool, store kwargs for verification."""
+        self.last_session = session
         self.last_kwargs = kwargs
         return "mock result"
 
@@ -32,7 +32,6 @@ class TestToolRegistry:
         """register() should add tool to registry."""
         registry = ToolRegistry()
         tool = MockTool()
-
         registry.register(tool)
 
         assert registry.get("mock_tool") == tool
@@ -74,28 +73,30 @@ class TestToolRegistry:
         assert schemas[0]["function"]["name"] == "mock_tool"
 
     @pytest.mark.anyio
-    async def test_execute_tool_passes_frontend_to_tool(self):
-        """execute_tool() should pass frontend parameter to tool."""
+    async def test_execute_tool_passes_kwargs_to_tool(self):
+        """execute_tool() should pass kwargs and session to tool."""
         registry = ToolRegistry()
         tool = MockTool()
         registry.register(tool)
 
-        frontend = SilentFrontend()
-        result = await registry.execute_tool("mock_tool", frontend, arg1="value1")
+        mock_session = MagicMock()
+        result = await registry.execute_tool(
+            "mock_tool", session=mock_session, arg1="value1"
+        )
 
-        # Verify tool received the frontend
-        assert tool.last_frontend == frontend
+        # Verify tool received the kwargs and session
         assert tool.last_kwargs == {"arg1": "value1"}
+        assert tool.last_session == mock_session
         assert result == "mock result"
 
     @pytest.mark.anyio
     async def test_execute_tool_raises_for_nonexistent_tool(self):
         """execute_tool() should raise ValueError for nonexistent tool."""
         registry = ToolRegistry()
-        frontend = SilentFrontend()
+        mock_session = MagicMock()
 
         with pytest.raises(ValueError, match="Tool not found"):
-            await registry.execute_tool("nonexistent", frontend)
+            await registry.execute_tool("nonexistent", session=mock_session)
 
 
 class TestToolRegistryWithBuiltins:

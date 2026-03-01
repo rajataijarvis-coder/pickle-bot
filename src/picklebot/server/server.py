@@ -6,10 +6,12 @@ from typing import TYPE_CHECKING
 
 import uvicorn
 
-from picklebot.server.base import Worker
-from picklebot.server.agent_worker import AgentDispatcherWorker
-from picklebot.server.cron_worker import CronWorker
-from picklebot.server.messagebus_worker import MessageBusWorker
+from .worker import Worker
+from .agent_worker import AgentWorker
+from .cron_worker import CronWorker
+from .delivery_worker import DeliveryWorker
+from .messagebus_worker import MessageBusWorker
+from .websocket_worker import WebSocketWorker
 from picklebot.utils.config import ConfigReloader
 from picklebot.api import create_app
 
@@ -45,9 +47,15 @@ class Server:
 
     def _setup_workers(self) -> None:
         """Create all workers."""
-        self.workers.append(AgentDispatcherWorker(self.context))
-        self.workers.append(CronWorker(self.context))
         self.config_reloader.start()
+
+        self.workers = [
+            self.context.eventbus,  # EventBus (active worker)
+            AgentWorker(self.context),  # SubscriberWorker
+            CronWorker(self.context),  # Active worker
+            DeliveryWorker(self.context),  # SubscriberWorker
+            WebSocketWorker(self.context),  # SubscriberWorker
+        ]
 
         if self.context.config.messagebus.enabled:
             buses = self.context.messagebus_buses
@@ -56,6 +64,8 @@ class Server:
                 logger.info(f"MessageBus enabled with {len(buses)} bus(es)")
             else:
                 logger.warning("MessageBus enabled but no buses configured")
+
+        logger.info(f"Server setup complete with {len(self.workers)} core workers")
 
     def _start_workers(self) -> None:
         """Start all workers as tasks."""

@@ -202,7 +202,7 @@ class TestCliBusRun:
             # Sleep for a long time
             import time
 
-            time.sleep(10)
+            time.sleep(3)
             return "quit"
 
         with patch("picklebot.messagebus.cli_bus.input", side_effect=hanging_input):
@@ -314,7 +314,7 @@ class TestCliBusStop:
         def hanging_input(prompt=""):
             import time
 
-            time.sleep(10)
+            time.sleep(3)
             return "quit"
 
         with patch("picklebot.messagebus.cli_bus.input", side_effect=hanging_input):

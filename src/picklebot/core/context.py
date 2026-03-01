@@ -1,16 +1,13 @@
-import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from picklebot.core.agent_loader import AgentLoader
 from picklebot.core.commands.registry import CommandRegistry
 from picklebot.core.cron_loader import CronLoader
 from picklebot.core.history import HistoryStore
 from picklebot.core.skill_loader import SkillLoader
+from picklebot.core.eventbus import EventBus
 from picklebot.messagebus.base import MessageBus
 from picklebot.utils.config import Config
-
-if TYPE_CHECKING:
-    from picklebot.server.base import Job
 
 
 class SharedContext:
@@ -23,7 +20,7 @@ class SharedContext:
     cron_loader: CronLoader
     command_registry: CommandRegistry
     messagebus_buses: list[MessageBus[Any]]
-    _agent_queue: asyncio.Queue["Job"] | None
+    eventbus: EventBus
 
     def __init__(
         self, config: Config, buses: list[MessageBus[Any]] | None = None
@@ -41,11 +38,4 @@ class SharedContext:
         else:
             self.messagebus_buses = MessageBus.from_config(config)
 
-        self._agent_queue = None
-
-    @property
-    def agent_queue(self) -> asyncio.Queue["Job"]:
-        """Lazily create agent queue on first access."""
-        if self._agent_queue is None:
-            self._agent_queue = asyncio.Queue()
-        return self._agent_queue
+        self.eventbus = EventBus(self)

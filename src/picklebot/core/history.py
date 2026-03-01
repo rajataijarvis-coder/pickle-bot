@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 from litellm.types.completion import ChatCompletionMessageParam as Message
 
-from picklebot.utils.config import Config
+if TYPE_CHECKING:
+    from picklebot.utils.config import Config
 
 
 def _now_iso() -> str:
@@ -112,7 +113,7 @@ class HistoryStore:
     """
 
     @staticmethod
-    def from_config(config: Config) -> "HistoryStore":
+    def from_config(config: "Config") -> "HistoryStore":
         return HistoryStore(
             config.history_path, max_history_file_size=config.max_history_file_size
         )

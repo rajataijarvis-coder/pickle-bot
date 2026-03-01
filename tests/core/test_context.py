@@ -1,19 +1,12 @@
 """Tests for SharedContext."""
 
-import asyncio
 
-import pytest
-
-
-@pytest.mark.anyio
-async def test_agent_queue_is_lazy(test_context):
-    """agent_queue should be created lazily on first access."""
-    # Before access, internal storage should be None
-    assert test_context._agent_queue is None
-
-    # After access, should be a Queue
-    queue = test_context.agent_queue
-    assert isinstance(queue, asyncio.Queue)
-
-    # Same queue on subsequent access
-    assert test_context.agent_queue is queue
+def test_context_initialization(test_context):
+    """SharedContext should initialize with all required components."""
+    assert test_context.config is not None
+    assert test_context.history_store is not None
+    assert test_context.agent_loader is not None
+    assert test_context.skill_loader is not None
+    assert test_context.cron_loader is not None
+    assert test_context.command_registry is not None
+    assert test_context.eventbus is not None

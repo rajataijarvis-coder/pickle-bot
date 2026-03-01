@@ -1,7 +1,6 @@
 """CLI interface for pickle-bot using Typer."""
 
 from pathlib import Path
-from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -67,9 +66,7 @@ def main(
 
 
 @app.command()
-def chat(
-    ctx: typer.Context
-) -> None:
+def chat(ctx: typer.Context) -> None:
     """Start interactive chat session."""
     chat_command(ctx)
 

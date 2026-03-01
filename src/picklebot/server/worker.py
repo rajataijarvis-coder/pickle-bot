@@ -1,34 +1,16 @@
-"""Base classes for worker architecture."""
+"""Base worker lifecycle management."""
 
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-
-from picklebot.core.agent import SessionMode
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
-    from picklebot.frontend.base import Frontend
-
-
-@dataclass
-class Job:
-    """A unit of work for the AgentWorker."""
-
-    session_id: str | None  # None = new session, set after first pickup
-    agent_id: str  # Which agent to run
-    message: str  # User prompt (set to "." after consumed)
-    frontend: "Frontend"  # Live frontend object for responses
-    mode: SessionMode  # CHAT or JOB
-    result_future: asyncio.Future[str] = field(
-        default_factory=lambda: asyncio.get_event_loop().create_future())
-    retry_count: int = 0
 
 
 class Worker(ABC):
-    """Base class for all workers."""
+    """Base class for all workers with lifecycle management."""
 
     def __init__(self, context: "SharedContext"):
         self.context = context
@@ -69,3 +51,14 @@ class Worker(ABC):
                 await self._task
             except asyncio.CancelledError:
                 pass
+
+
+class SubscriberWorker(Worker):
+    """Worker that only subscribes to events, no active loop."""
+
+    async def run(self) -> None:
+        """Wait for cancellation - actual work happens in event handlers."""
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            pass

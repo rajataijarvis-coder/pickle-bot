@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 from picklebot.tools.base import tool
 
 if TYPE_CHECKING:
-    from picklebot.frontend import Frontend
+    from picklebot.core.agent import AgentSession
+
 
 # Filesystem tools
 
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
         "required": ["path"],
     },
 )
-async def read_file(frontend: "Frontend", path: str) -> str:
+async def read_file(path: str, session: "AgentSession") -> str:
     """Read and return the contents of a file at the given path."""
     try:
         return Path(path).read_text()
@@ -52,7 +53,7 @@ async def read_file(frontend: "Frontend", path: str) -> str:
         "required": ["path", "content"],
     },
 )
-async def write_file(frontend: "Frontend", path: str, content: str) -> str:
+async def write_file(path: str, content: str, session: "AgentSession") -> str:
     """Write content to a file at the given path."""
     try:
         Path(path).write_text(content)
@@ -82,7 +83,7 @@ async def write_file(frontend: "Frontend", path: str, content: str) -> str:
     },
 )
 async def edit_file(
-    frontend: "Frontend", path: str, old_text: str, new_text: str
+    path: str, old_text: str, new_text: str, session: "AgentSession"
 ) -> str:
     """Edit a file by replacing old_text with new_text."""
     try:
@@ -114,7 +115,7 @@ async def edit_file(
         "required": ["command"],
     },
 )
-async def bash(frontend: "Frontend", command: str) -> str:
+async def bash(command: str, session: "AgentSession") -> str:
     """Execute a bash command and return the output."""
     try:
         process = await asyncio.create_subprocess_shell(

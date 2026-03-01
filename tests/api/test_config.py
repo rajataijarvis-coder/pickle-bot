@@ -9,7 +9,7 @@ import yaml
 from picklebot.api import create_app
 from picklebot.api.schemas import ConfigUpdate
 from picklebot.core.context import SharedContext
-from picklebot.utils.config import Config, LLMConfig
+from picklebot.utils.config import Config
 
 
 @pytest.fixture
@@ -18,13 +18,24 @@ def client():
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
 
-        config = Config(
-            workspace=workspace,
-            llm=LLMConfig(provider="openai", model="gpt-4", api_key="test-key"),
-            default_agent="pickle",
-            chat_max_history=50,
-            job_max_history=500,
+        # Write complete config to YAML so reload() works
+        user_config = workspace / "config.user.yaml"
+        user_config.write_text(
+            yaml.dump(
+                {
+                    "llm": {
+                        "provider": "openai",
+                        "model": "gpt-4",
+                        "api_key": "test-key",
+                    },
+                    "default_agent": "pickle",
+                    "chat_max_history": 50,
+                    "job_max_history": 500,
+                }
+            )
         )
+
+        config = Config.load(workspace)
         context = SharedContext(config)
         app = create_app(context)
 
@@ -92,17 +103,16 @@ class TestUpdateConfig:
 
         assert response.status_code == 200
 
-        # Verify config.user.yaml was created
+        # Verify config.user.yaml exists
         user_config_path = workspace / "config.user.yaml"
         assert user_config_path.exists()
 
-        # Verify content
+        # Verify content was updated
         with open(user_config_path) as f:
             user_config = yaml.safe_load(f)
 
         assert user_config["default_agent"] == "updated-agent"
         assert user_config["chat_max_history"] == 100
-        assert "job_max_history" not in user_config  # not updated
 
     def test_update_config_preserves_existing_user_config(self, client):
         """PATCH /config preserves existing config.user.yaml fields."""

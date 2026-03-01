@@ -2,10 +2,21 @@
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+import time
+from dataclasses import replace
+from typing import TYPE_CHECKING, Union
 
-from picklebot.server.base import Worker, Job
-from picklebot.core.agent import Agent
+from .worker import SubscriberWorker
+from picklebot.core.agent import Agent, SessionMode
+from picklebot.core.events import (
+    Event,
+    EventType,
+    Source,
+    InboundEvent,
+    OutboundEvent,
+    DispatchEvent,
+    DispatchResultEvent,
+)
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
@@ -16,23 +27,33 @@ if TYPE_CHECKING:
 # Maximum number of retry attempts for failed sessions
 MAX_RETRIES = 3
 
+logger = logging.getLogger(__name__)
+
+# Type alias for events that can be processed by SessionExecutor
+ProcessableEvent = Union[InboundEvent, DispatchEvent]
+
 
 class SessionExecutor:
-    """Executes a single agent session job."""
+    """Executes a single agent session from a typed event."""
 
     def __init__(
         self,
         context: "SharedContext",
         agent_def: "AgentDef",
-        job: Job,
+        event: ProcessableEvent,
         semaphore: asyncio.Semaphore,
     ):
         self.context = context
         self.agent_def = agent_def
-        self.job = job
+        self.event = event
         self.semaphore = semaphore
-        self.logger = logging.getLogger(
-            f"picklebot.server.SessionExecutor.{agent_def.id}"
+
+        # Extract fields from typed event
+        self.agent_id = event.agent_id
+        self.retry_count = event.retry_count
+        # DispatchEvent always uses JOB mode, InboundEvent uses CHAT mode
+        self.mode = (
+            SessionMode.JOB if isinstance(event, DispatchEvent) else SessionMode.CHAT
         )
 
     async def run(self) -> None:
@@ -42,41 +63,84 @@ class SessionExecutor:
 
     async def _execute(self) -> None:
         """Run the actual agent session."""
+        session_id = self.event.session_id or None
+
         try:
             agent = Agent(self.agent_def, self.context)
 
-            if self.job.session_id:
+            if session_id:
                 try:
-                    session = agent.resume_session(self.job.session_id)
+                    session = agent.resume_session(session_id)
                 except ValueError:
-                    self.logger.warning(
-                        f"Session {self.job.session_id} not found, creating new"
-                    )
-                    session = agent.new_session(
-                        self.job.mode, session_id=self.job.session_id
-                    )
+                    logger.warning(f"Session {session_id} not found, creating new")
+                    session = agent.new_session(self.mode, session_id=session_id)
             else:
-                session = agent.new_session(self.job.mode)
-                self.job.session_id = session.session_id
+                session = agent.new_session(self.mode)
+                session_id = session.session_id
 
-            response = await session.chat(self.job.message, self.job.frontend)
-            self.logger.info(f"Session completed: {session.session_id}")
+            response = await session.chat(self.event.content)
+            logger.info(f"Session completed: {session_id}")
 
-            self.job.result_future.set_result(response)
+            # Publish result event based on input type
+            if isinstance(self.event, DispatchEvent):
+                result_event = DispatchResultEvent(
+                    session_id=session_id,
+                    agent_id=self.agent_def.id,
+                    source=Source.agent(self.agent_def.id),
+                    content=response,
+                    timestamp=time.time(),
+                )
+            else:
+                result_event = OutboundEvent(
+                    session_id=session_id,
+                    agent_id=self.agent_def.id,
+                    source=Source.agent(self.agent_def.id),
+                    content=response,
+                    timestamp=time.time(),
+                )
+            await self.context.eventbus.publish(result_event)
 
         except Exception as e:
-            self.logger.error(f"Session failed: {e}")
+            logger.error(f"Session failed: {e}")
 
-            if self.job.retry_count < MAX_RETRIES:
-                self.job.retry_count += 1
-                self.job.message = "."
-                await self.context.agent_queue.put(self.job)
+            if self.retry_count < MAX_RETRIES:
+                # Use dataclasses.replace() for retry logic
+                retry_event = replace(
+                    self.event,
+                    retry_count=self.retry_count + 1,
+                    content=".",  # Minimal message for retry
+                )
+                await self.context.eventbus.publish(retry_event)
             else:
-                self.job.result_future.set_exception(e)
+                # Publish result event with error based on input type
+                if isinstance(self.event, DispatchEvent):
+                    result_event = DispatchResultEvent(
+                        session_id=session_id,
+                        agent_id=self.agent_def.id,
+                        source=Source.agent(self.agent_def.id),
+                        content="",
+                        timestamp=time.time(),
+                        error=str(e),
+                    )
+                else:
+                    result_event = OutboundEvent(
+                        session_id=session_id,
+                        agent_id=self.agent_def.id,
+                        source=Source.agent(self.agent_def.id),
+                        content="",
+                        timestamp=time.time(),
+                        error=str(e),
+                    )
+                await self.context.eventbus.publish(result_event)
 
 
-class AgentDispatcherWorker(Worker):
-    """Dispatches jobs to session executors with per-agent concurrency control."""
+class AgentWorker(SubscriberWorker):
+    """Dispatches events to session executors with per-agent concurrency control.
+
+    Auto-subscribes to:
+    - INBOUND events (from platforms, cron, retries)
+    - DISPATCH events (from subagent calls)
+    """
 
     CLEANUP_THRESHOLD = 5
 
@@ -84,26 +148,65 @@ class AgentDispatcherWorker(Worker):
         super().__init__(context)
         self._semaphores: dict[str, asyncio.Semaphore] = {}
 
-    async def run(self) -> None:
-        """Process jobs sequentially, dispatch to executors."""
-        self.logger.info("AgentDispatcherWorker started")
+        # Auto-subscribe to events
+        self.context.eventbus.subscribe(EventType.INBOUND, self.handle_inbound)
+        self.context.eventbus.subscribe(EventType.DISPATCH, self.handle_dispatch)
+        self.logger.info("AgentWorker subscribed to INBOUND and DISPATCH events")
 
-        while True:
-            job = await self.context.agent_queue.get()
-            self._dispatch_job(job)
-            self.context.agent_queue.task_done()
-            self._maybe_cleanup_semaphores()
+    async def handle_inbound(self, event: Event) -> None:
+        """Handle INBOUND event (from platforms, cron, retries)."""
+        # Type-check: only process InboundEvent instances
+        if not isinstance(event, InboundEvent):
+            return
 
-    def _dispatch_job(self, job: Job) -> None:
-        """Create executor task for job."""
+        await self._dispatch_event(event)
+        logger.debug(f"Dispatched job for INBOUND event, session_id={event.session_id}")
+
+    async def handle_dispatch(self, event: Event) -> None:
+        """Handle DISPATCH event (from subagent calls)."""
+        # Type-check: only process DispatchEvent instances
+        if not isinstance(event, DispatchEvent):
+            return
+
+        await self._dispatch_event(event)
+        logger.debug(
+            f"Dispatched job for DISPATCH event, session_id={event.session_id}"
+        )
+
+    async def _dispatch_event(self, event: ProcessableEvent) -> None:
+        """Create executor task for typed event."""
+        agent_id = event.agent_id
+
         try:
-            agent_def = self.context.agent_loader.load(job.agent_id)
+            agent_def = self.context.agent_loader.load(agent_id)
         except DefNotFoundError as e:
-            self.logger.error(f"Agent not found: {job.agent_id}: {e}")
+            logger.error(f"Agent not found: {agent_id}: {e}")
+
+            # Publish result event with error based on input type
+            if isinstance(event, DispatchEvent):
+                result_event = DispatchResultEvent(
+                    session_id=event.session_id,
+                    agent_id=agent_id,
+                    source="agent:dispatcher",
+                    content="",
+                    timestamp=time.time(),
+                    error=str(e),
+                )
+            else:
+                result_event = OutboundEvent(
+                    session_id=event.session_id,
+                    agent_id=agent_id,
+                    source="agent:dispatcher",
+                    content="",
+                    timestamp=time.time(),
+                    error=str(e),
+                )
+            await self.context.eventbus.publish(result_event)
             return
 
         sem = self._get_or_create_semaphore(agent_def)
-        asyncio.create_task(SessionExecutor(self.context, agent_def, job, sem).run())
+        asyncio.create_task(SessionExecutor(self.context, agent_def, event, sem).run())
+        self._maybe_cleanup_semaphores()
 
     def _get_or_create_semaphore(self, agent_def: "AgentDef") -> asyncio.Semaphore:
         """Get existing or create new semaphore for agent."""
@@ -111,7 +214,7 @@ class AgentDispatcherWorker(Worker):
             self._semaphores[agent_def.id] = asyncio.Semaphore(
                 agent_def.max_concurrency
             )
-            self.logger.debug(
+            logger.debug(
                 f"Created semaphore for {agent_def.id} with value {agent_def.max_concurrency}"
             )
         return self._semaphores[agent_def.id]
@@ -125,8 +228,4 @@ class AgentDispatcherWorker(Worker):
         stale = set(self._semaphores.keys()) - existing
         for agent_id in stale:
             del self._semaphores[agent_id]
-            self.logger.debug(f"Cleaned up semaphore for deleted agent: {agent_id}")
-
-
-# Keep AgentWorker as an alias for backward compatibility
-AgentWorker = AgentDispatcherWorker
+            logger.debug(f"Cleaned up semaphore for deleted agent: {agent_id}")

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from picklebot.frontend import Frontend
+    from picklebot.core.agent import AgentSession
 
 
 class BaseTool(ABC):
@@ -16,11 +16,11 @@ class BaseTool(ABC):
     parameters: dict[str, Any]  # JSON Schema for function calling
 
     @abstractmethod
-    async def execute(self, frontend: "Frontend", **kwargs: Any) -> str:
+    async def execute(self, session: "AgentSession", **kwargs: Any) -> str:
         """Execute the tool.
 
         Args:
-            frontend: Frontend for displaying output
+            session: The agent session context
             **kwargs: Tool-specific arguments
         """
 
@@ -60,14 +60,14 @@ class FunctionTool(BaseTool):
         self.parameters = parameters
         self._func = func
 
-    async def execute(self, frontend: "Frontend", **kwargs: Any) -> str:
+    async def execute(self, session: "AgentSession", **kwargs: Any) -> str:
         """Execute the underlying function.
 
         Args:
-            frontend: Frontend for displaying output
+            session: The agent session context
             **kwargs: Tool-specific arguments
         """
-        result = self._func(frontend=frontend, **kwargs)
+        result = self._func(session=session, **kwargs)
         if asyncio.iscoroutine(result):
             result = await result
         return str(result)

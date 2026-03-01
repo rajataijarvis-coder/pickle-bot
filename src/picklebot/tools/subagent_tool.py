@@ -2,15 +2,16 @@
 
 import asyncio
 import json
+import time
 from typing import TYPE_CHECKING
 
-from picklebot.frontend.base import SilentFrontend
+from picklebot.core.events import DispatchEvent, DispatchResultEvent, Event, Source
 from picklebot.tools.base import BaseTool, tool
 from picklebot.utils.def_loader import DefNotFoundError
 
 if TYPE_CHECKING:
+    from picklebot.core.agent import AgentSession
     from picklebot.core.context import SharedContext
-    from picklebot.frontend import Frontend
 
 
 def create_subagent_dispatch_tool(
@@ -20,9 +21,8 @@ def create_subagent_dispatch_tool(
     """Factory to create subagent dispatch tool with dynamic schema.
 
     Args:
-        agent_loader: AgentLoader instance for discovering and loading agents
         current_agent_id: ID of the calling agent (will be excluded from enum)
-        context: SharedContext for creating subagents
+        context: SharedContext for event bus access
 
     Returns:
         Async tool function for dispatching to subagents, or None if no agents available
@@ -68,47 +68,74 @@ def create_subagent_dispatch_tool(
         },
     )
     async def subagent_dispatch(
-        frontend: "Frontend", agent_id: str, task: str, context: str = ""
+        agent_id: str, task: str, session: "AgentSession", context: str = ""
     ) -> str:
         """Dispatch task to subagent, return result + session_id.
 
         Args:
-            frontend: Frontend for displaying dispatch status
             agent_id: ID of the target agent
             task: Task for the subagent to perform
+            session: The agent session context
             context: Optional context information
 
         Returns:
             JSON with result and session_id
         """
-        from picklebot.core.agent import SessionMode
-        from picklebot.server.base import Job
+        # Verify agent exists and create session
+        from picklebot.core.agent import Agent, SessionMode
 
-        # Verify agent exists
         try:
-            shared_context.agent_loader.load(agent_id)
+            agent_def = shared_context.agent_loader.load(agent_id)
         except DefNotFoundError:
             raise ValueError(f"Agent '{agent_id}' not found")
+
+        agent = Agent(agent_def, shared_context)
+        agent_session = agent.new_session(SessionMode.JOB)
+        session_id = agent_session.session_id
 
         user_message = task
         if context:
             user_message = f"{task}\n\nContext:\n{context}"
 
-        # Dispatch through queue (works for both server and CLI modes)
-        job = Job(
-            session_id=None,
-            agent_id=agent_id,
-            message=user_message,
-            frontend=SilentFrontend(),
-            mode=SessionMode.JOB,
-        )
-        job.result_future = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        result_future: asyncio.Future[str] = loop.create_future()
 
-        async with frontend.show_dispatch(current_agent_id, agent_id, task):
-            await shared_context.agent_queue.put(job)
-            response = await job.result_future
+        # Create temp handler that filters by session_id
+        async def handle_result(event: Event) -> None:
+            if (
+                isinstance(event, DispatchResultEvent)
+                and event.session_id == session_id
+            ):
+                if not result_future.done():
+                    if event.error:
+                        result_future.set_exception(Exception(event.error))
+                    else:
+                        result_future.set_result(event.content)
 
-        result = {"result": response, "session_id": job.session_id}
+        # Subscribe to DISPATCH_RESULT events
+        from picklebot.core.events import EventType
+
+        shared_context.eventbus.subscribe(EventType.DISPATCH_RESULT, handle_result)
+
+        try:
+            # Publish DISPATCH event
+            event = DispatchEvent(
+                session_id=session_id,
+                agent_id=agent_id,
+                source=Source.agent(current_agent_id),
+                content=user_message,
+                timestamp=time.time(),
+                parent_session_id=session.session_id,
+            )
+            await shared_context.eventbus.publish(event)
+
+            # Wait for result
+            response = await result_future
+        finally:
+            # Always unsubscribe
+            shared_context.eventbus.unsubscribe(handle_result)
+
+        result = {"result": response, "session_id": session_id}
         return json.dumps(result)
 
     return subagent_dispatch

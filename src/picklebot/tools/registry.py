@@ -6,7 +6,7 @@ from picklebot.tools.base import BaseTool
 from picklebot.tools.builtin_tools import bash, edit_file, read_file, write_file
 
 if TYPE_CHECKING:
-    from picklebot.frontend import Frontend
+    from picklebot.core.agent import AgentSession
 
 
 class ToolRegistry:
@@ -37,13 +37,15 @@ class ToolRegistry:
         """Get tool schemas for all registered tools."""
         return [tool.get_tool_schema() for tool in self._tools.values()]
 
-    async def execute_tool(self, name: str, frontend: "Frontend", **kwargs: Any) -> str:
+    async def execute_tool(
+        self, name: str, session: "AgentSession", **kwargs: Any
+    ) -> str:
         """
         Execute a tool by name.
 
         Args:
             name: Name of the tool to execute
-            frontend: Frontend for displaying output
+            session: The agent session context
             **kwargs: Tool-specific arguments
 
         Raises:
@@ -53,7 +55,7 @@ class ToolRegistry:
         if tool is None:
             raise ValueError(f"Tool not found: {name}")
 
-        return await tool.execute(frontend=frontend, **kwargs)
+        return await tool.execute(session=session, **kwargs)
 
     @classmethod
     def with_builtins(cls) -> "ToolRegistry":

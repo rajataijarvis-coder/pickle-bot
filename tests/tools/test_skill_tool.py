@@ -1,10 +1,18 @@
 """Tests for skill tool factory."""
 
 import pytest
+from unittest.mock import MagicMock
 
 from picklebot.core.skill_loader import SkillLoader
-from picklebot.frontend.base import SilentFrontend
 from picklebot.tools.skill_tool import create_skill_tool
+
+
+def _make_mock_session():
+    """Helper to create a mock session."""
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session"
+    mock_session.agent_id = "test-agent"
+    return mock_session
 
 
 class TestCreateSkillTool:
@@ -91,8 +99,8 @@ This is the skill content.
 
         assert tool_func is not None
         # Execute
-        frontend = SilentFrontend()
-        result = await tool_func.execute(frontend=frontend, skill_name="test-skill")
+        mock_session = _make_mock_session()
+        result = await tool_func.execute(session=mock_session, skill_name="test-skill")
 
         # Verify
         assert "# Test Skill" in result
@@ -123,9 +131,9 @@ description: An existing skill
 
         assert tool_func is not None
         # Execute - try to load a skill that doesn't exist
-        frontend = SilentFrontend()
+        mock_session = _make_mock_session()
         result = await tool_func.execute(
-            frontend=frontend, skill_name="nonexistent-skill"
+            session=mock_session, skill_name="nonexistent-skill"
         )
 
         # Verify - should return error message
