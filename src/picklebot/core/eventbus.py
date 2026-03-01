@@ -11,7 +11,7 @@ from picklebot.server.worker import Worker
 
 from .events import (
     Event,
-    EventType,
+    OutboundEvent,
     deserialize_event,
 )
 
@@ -101,7 +101,7 @@ class EventBus(Worker):
 
     async def _persist_outbound(self, event: Event) -> None:
         """Persist event to disk (only OUTBOUND events)."""
-        if event.type != EventType.OUTBOUND:
+        if not isinstance(event, OutboundEvent):
             return
 
         filename = f"{event.timestamp}_{event.session_id}.json"
