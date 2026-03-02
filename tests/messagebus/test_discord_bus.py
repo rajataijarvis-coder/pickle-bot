@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from picklebot.messagebus.discord_bus import DiscordBus, DiscordContext
+from picklebot.messagebus.discord_bus import DiscordBus, DiscordEventSource
 from picklebot.utils.config import DiscordConfig
 
 
@@ -18,7 +18,7 @@ class TestDiscordBusReply:
 
     @pytest.mark.anyio
     async def test_reply_sends_to_channel_id(self):
-        """reply should send to context.channel_id."""
+        """reply should send to source.channel_id."""
         config = DiscordConfig(bot_token="test-token")
         bus = DiscordBus(config)
 
@@ -28,8 +28,8 @@ class TestDiscordBusReply:
         mock_client.get_channel.return_value = mock_channel
         bus.client = mock_client
 
-        ctx = DiscordContext(user_id="user123", channel_id="456789")
-        await bus.reply(content="Test reply", context=ctx)
+        source = DiscordEventSource(user_id="user123", channel_id="456789")
+        await bus.reply(content="Test reply", source=source)
 
         mock_client.get_channel.assert_called_once_with(456789)
         mock_channel.send.assert_called_once_with("Test reply")
@@ -67,7 +67,7 @@ class TestDiscordBusRunStop:
         bus = DiscordBus(config)
         mock_client = _create_mock_discord_client()
 
-        async def dummy_callback(content: str, context: DiscordContext) -> None:
+        async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
@@ -86,7 +86,7 @@ class TestDiscordBusRunStop:
         bus = DiscordBus(config)
         mock_client = _create_mock_discord_client()
 
-        async def dummy_callback(content: str, context: DiscordContext) -> None:
+        async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
@@ -104,7 +104,7 @@ class TestDiscordBusRunStop:
         bus = DiscordBus(config)
         mock_client = _create_mock_discord_client()
 
-        async def dummy_callback(content: str, context: DiscordContext) -> None:
+        async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
@@ -131,7 +131,7 @@ class TestDiscordBusRunStop:
         bus = DiscordBus(config)
         mock_client = _create_mock_discord_client()
 
-        async def dummy_callback(content: str, context: DiscordContext) -> None:
+        async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
