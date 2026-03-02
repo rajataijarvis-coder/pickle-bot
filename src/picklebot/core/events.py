@@ -1,10 +1,73 @@
 """Event types and data classes for the event bus."""
 
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from picklebot.messagebus.base import MessageContext
+
+
+class EventSource(ABC):
+    """Abstract base for all event sources.
+
+    Subclasses define _namespace for registry lookup and implement
+    serialization via __str__ and from_string.
+    """
+
+    _registry: ClassVar[dict[str, type["EventSource"]]] = {}
+    _namespace: ClassVar[str] = ""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if cls._namespace:
+            cls._registry[cls._namespace] = cls
+
+    @property
+    def is_platform(self) -> bool:
+        return self._namespace.startswith("platform-")
+
+    @property
+    def is_agent(self) -> bool:
+        return self._namespace == "agent"
+
+    @property
+    def is_cron(self) -> bool:
+        return self._namespace == "cron"
+
+    @property
+    def platform_name(self) -> str | None:
+        if not self.is_platform:
+            return None
+        return self._namespace.split("-", 1)[1]
+
+    @classmethod
+    def from_string(cls, s: str) -> "EventSource":
+        """Parse string to EventSource using namespace registry."""
+        namespace = s.split(":")[0]
+        source_cls = cls._registry.get(namespace)
+        if not source_cls:
+            raise ValueError(f"Unknown source namespace: {namespace}")
+        return source_cls.from_string(s)
+
+    @abstractmethod
+    def __str__(self) -> str: ...
+
+
+@dataclass
+class AgentEventSource(EventSource):
+    """Source for agent-generated events."""
+
+    _namespace = "agent"
+    agent_id: str
+
+    def __str__(self) -> str:
+        return f"agent:{self.agent_id}"
+
+    @classmethod
+    def from_string(cls, s: str) -> "AgentEventSource":
+        _, agent_id = s.split(":", 1)
+        return cls(agent_id=agent_id)
 
 
 class Source:
