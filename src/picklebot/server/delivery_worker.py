@@ -2,9 +2,11 @@
 
 import logging
 import random
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from picklebot.core.events import OutboundEvent
+from picklebot.core.history import HistorySession
 from .worker import SubscriberWorker
 
 if TYPE_CHECKING:
@@ -98,18 +100,31 @@ class DeliveryWorker(SubscriberWorker):
 
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
-        # Auto-subscribe to OutboundEvent events
         self.context.eventbus.subscribe(OutboundEvent, self.handle_event)
-        self.logger.info("DeliveryWorker subscribed to OutboundEvent events")
+        self.logger.info("DeliveryWorker subscribed to OUTBOUND events")
+
+    @lru_cache(maxsize=10)
+    def _get_session_source(self, session_id: str) -> HistorySession | None:
+        """Get session info from HistoryStore (cached)."""
+        for session in self.context.history_store.list_sessions():
+            if session.id == session_id:
+                return session
+        return None
 
     async def handle_event(self, event: OutboundEvent) -> None:
         """Handle an outbound message event."""
         try:
-            # Look up where to deliver
-            platform_info = self._lookup_platform(event.session_id)
-            platform = platform_info["platform"]
+            session_info = self._get_session_source(event.session_id)
 
-            # Get limit and chunk
+            if not session_info or not session_info.source:
+                self.logger.warning(
+                    f"No source for session {event.session_id}, skipping delivery"
+                )
+                return
+
+            platform, user_id = session_info.source.split(":", 1)
+            context = self._build_context(platform, user_id, session_info)
+
             limit = PLATFORM_LIMITS.get(platform, float("inf"))
             if limit != float("inf"):
                 limit = int(limit)
@@ -118,87 +133,36 @@ class DeliveryWorker(SubscriberWorker):
                 int(limit) if limit != float("inf") else len(event.content),
             )
 
-            # Deliver each chunk
-            for chunk in chunks:
-                await self._deliver(platform, platform_info, chunk)
+            bus = self._get_bus(platform)
+            if bus:
+                for chunk in chunks:
+                    await bus.reply(chunk, context)
 
-            # Ack the event
             self.context.eventbus.ack(event)
-
             self.logger.info(
                 f"Delivered message to {platform} for session {event.session_id}"
             )
 
         except Exception as e:
             self.logger.error(f"Failed to deliver message: {e}")
-            # TODO: Retry logic with backoff
 
-    def _lookup_platform(self, session_id: str) -> dict[str, Any]:
-        """Look up platform and delivery context for a session.
+    def _build_context(
+        self, platform: str, user_id: str, session_info: HistorySession
+    ) -> Any:
+        """Rebuild platform context from stored session info."""
+        if platform == "telegram":
+            from picklebot.messagebus.telegram_bus import TelegramContext
 
-        Args:
-            session_id: Session ID to look up (UUID format)
+            return TelegramContext(user_id=user_id, chat_id=user_id)
+        elif platform == "discord":
+            from picklebot.messagebus.discord_bus import DiscordContext
 
-        Returns:
-            Dict with platform info (platform, user_id, chat_id/channel_id)
-        """
-        # Look in messagebus config for session -> platform mapping
-        messagebus_config = self.context.config.messagebus
-
-        # Check Telegram sessions
-        if messagebus_config.telegram:
-            sessions = messagebus_config.telegram.sessions
-            for user_id, sess_id in sessions.items():
-                if sess_id == session_id:
-                    return {
-                        "platform": "telegram",
-                        "user_id": user_id,
-                        "chat_id": messagebus_config.telegram.default_chat_id,
-                    }
-
-        # Check Discord sessions
-        if messagebus_config.discord:
-            sessions = messagebus_config.discord.sessions
-            for user_id, sess_id in sessions.items():
-                if sess_id == session_id:
-                    return {
-                        "platform": "discord",
-                        "user_id": user_id,
-                        "channel_id": messagebus_config.discord.default_chat_id,
-                    }
-
-        # Session not found - use default platform for proactive messages
-        default_platform = messagebus_config.default_platform
-        if default_platform:
-            return self._get_proactive_platform_info(default_platform)
-
-        # Default to CLI if no default platform configured
-        return {"platform": "cli"}
-
-    def _get_proactive_platform_info(self, platform: str) -> dict[str, Any]:
-        """Get platform info for proactive messages.
-
-        Args:
-            platform: Target platform name
-
-        Returns:
-            Dict with platform info for proactive delivery
-        """
-        messagebus_config = self.context.config.messagebus
-
-        if platform == "telegram" and messagebus_config.telegram:
-            return {
-                "platform": "telegram",
-                "chat_id": messagebus_config.telegram.default_chat_id,
-            }
-        elif platform == "discord" and messagebus_config.discord:
-            return {
-                "platform": "discord",
-                "channel_id": messagebus_config.discord.default_chat_id,
-            }
-
-        # Default to CLI for unknown platforms
-        return {"platform": "cli"}
+            stored = session_info.context or {}
+            return DiscordContext(
+                user_id=user_id, channel_id=stored.get("channel_id", user_id)
+            )
+        else:
+            raise ValueError(f"Unknown platform: {platform}")
 
     def _get_bus(self, platform: str) -> "MessageBus[Any] | None":
         """Get the message bus for a platform."""
@@ -206,39 +170,3 @@ class DeliveryWorker(SubscriberWorker):
             if bus.platform_name == platform:
                 return bus
         return None
-
-    async def _deliver(
-        self, platform: str, platform_info: dict[str, Any], content: str
-    ) -> None:
-        """Deliver a message chunk to a platform."""
-        bus = self._get_bus(platform)
-
-        if platform == "telegram" and bus is not None:
-            # Import here to avoid circular dependency
-            from picklebot.messagebus.telegram_bus import TelegramContext
-
-            chat_id = platform_info.get("chat_id")
-            user_id = platform_info.get("user_id")
-            if chat_id and user_id:
-                ctx = TelegramContext(user_id=user_id, chat_id=chat_id)
-                await bus.reply(content, ctx)
-            elif chat_id:
-                # Use post for proactive message to default chat
-                await bus.post(content)
-
-        elif platform == "discord" and bus is not None:
-            # Import here to avoid circular dependency
-            from picklebot.messagebus.discord_bus import DiscordContext
-
-            channel_id = platform_info.get("channel_id")
-            user_id = platform_info.get("user_id")
-            if channel_id and user_id:
-                ctx = DiscordContext(user_id=user_id, channel_id=channel_id)
-                await bus.reply(content, ctx)
-            elif channel_id:
-                # Use post for proactive message to default channel
-                await bus.post(content)
-
-        elif platform == "cli":
-            # CLI just prints to stdout
-            print(content)
