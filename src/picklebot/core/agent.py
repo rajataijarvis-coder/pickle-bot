@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from picklebot.core.agent_loader import AgentDef
     from picklebot.core.events import EventSource
     from picklebot.provider.llm import LLMToolCall
-    from picklebot.messagebus.base import MessageContext
 
 
 def get_source_settings(source: "EventSource | str") -> tuple[int, bool]:
