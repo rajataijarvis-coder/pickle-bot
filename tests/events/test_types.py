@@ -1,7 +1,11 @@
 # tests/events/test_types.py
+import time
+from dataclasses import dataclass
+
 import pytest
 
 from picklebot.core.events import (
+    Event,
     InboundEvent,
     OutboundEvent,
     DispatchEvent,
@@ -11,6 +15,71 @@ from picklebot.core.events import (
     deserialize_event,
 )
 from picklebot.messagebus.telegram_bus import TelegramContext
+
+
+class TestEventBaseClass:
+    """Tests for Event base class."""
+
+    def test_event_has_auto_timestamp(self):
+        """Event should auto-populate timestamp."""
+
+        @dataclass
+        class TestEvent(Event):
+            pass
+
+        before = time.time()
+        event = TestEvent(
+            session_id="s1",
+            agent_id="a1",
+            source="test",
+            content="hello",
+        )
+        after = time.time()
+
+        assert before <= event.timestamp <= after
+
+    def test_event_to_dict_uses_class_name(self):
+        """to_dict should use class name for type field."""
+
+        @dataclass
+        class TestEvent(Event):
+            extra: str = ""
+
+        event = TestEvent(
+            session_id="s1",
+            agent_id="a1",
+            source="test",
+            content="hello",
+            timestamp=123.0,
+            extra="foo",
+        )
+
+        result = event.to_dict()
+        assert result["type"] == "TestEvent"
+        assert result["session_id"] == "s1"
+        assert result["timestamp"] == 123.0
+        assert result["extra"] == "foo"
+
+    def test_event_from_dict_excludes_type(self):
+        """from_dict should work without type in constructor."""
+
+        @dataclass
+        class TestEvent(Event):
+            extra: str = ""
+
+        data = {
+            "type": "TestEvent",
+            "session_id": "s1",
+            "agent_id": "a1",
+            "source": "test",
+            "content": "hello",
+            "timestamp": 123.0,
+            "extra": "foo",
+        }
+
+        event = TestEvent.from_dict(data)
+        assert event.session_id == "s1"
+        assert event.extra == "foo"
 
 
 class TestInboundEvent:
@@ -81,6 +150,26 @@ class TestInboundEvent:
         assert event.agent_id == "pickle"
         assert isinstance(event.context, TelegramContext)
         assert event.context.chat_id == "456"
+
+    def test_inbound_event_roundtrip(self):
+        """InboundEvent should serialize/deserialize correctly."""
+        original = InboundEvent(
+            session_id="s1",
+            agent_id="a1",
+            source="telegram:user1",
+            content="hello",
+            timestamp=123.0,
+            retry_count=2,
+        )
+        data = original.to_dict()
+        restored = InboundEvent.from_dict(data)
+
+        assert restored.session_id == original.session_id
+        assert restored.agent_id == original.agent_id
+        assert restored.source == original.source
+        assert restored.content == original.content
+        assert restored.timestamp == original.timestamp
+        assert restored.retry_count == original.retry_count
 
 
 class TestOutboundEvent:
