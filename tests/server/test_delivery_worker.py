@@ -1,6 +1,10 @@
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from picklebot.server.delivery_worker import DeliveryWorker, chunk_message, PLATFORM_LIMITS
+from picklebot.server.delivery_worker import (
+    DeliveryWorker,
+    chunk_message,
+    PLATFORM_LIMITS,
+)
 from picklebot.core.events import OutboundEvent
 
 
@@ -56,7 +60,7 @@ async def test_handle_event_skips_if_no_source(mock_context):
     )
 
     # Spy on the ack method
-    with patch.object(mock_context.eventbus, 'ack') as mock_ack:
+    with patch.object(mock_context.eventbus, "ack") as mock_ack:
         await worker.handle_event(event)
         # Should not ack since we skipped
         mock_ack.assert_not_called()
@@ -90,7 +94,7 @@ async def test_handle_event_delivers_to_platform(mock_context):
     )
 
     # Spy on the ack method
-    with patch.object(mock_context.eventbus, 'ack') as mock_ack:
+    with patch.object(mock_context.eventbus, "ack") as mock_ack:
         await worker.handle_event(event)
 
         mock_bus.reply.assert_called_once()
@@ -132,6 +136,7 @@ async def test_delivery_worker_handles_cli_platform(mock_context):
 
 
 # chunk_message unit tests
+
 
 def test_chunk_message_under_limit():
     """Messages under limit should not be split."""
