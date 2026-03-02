@@ -5,7 +5,7 @@ import json
 import time
 from typing import TYPE_CHECKING
 
-from picklebot.core.events import DispatchEvent, DispatchResultEvent, Event, Source
+from picklebot.core.events import DispatchEvent, DispatchResultEvent, Source
 from picklebot.tools.base import BaseTool, tool
 from picklebot.utils.def_loader import DefNotFoundError
 
