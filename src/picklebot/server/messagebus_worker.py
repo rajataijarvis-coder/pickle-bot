@@ -72,8 +72,7 @@ class MessageBusWorker(Worker):
                         message, self.context
                     )
                     if result:
-                        await bus.reply(result, context)
-                    return
+                        return await bus.reply(result, context)
 
                 # Build source and resolve agent
                 user_id = context.user_id
