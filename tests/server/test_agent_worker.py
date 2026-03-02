@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers import create_test_agent
+
 from picklebot.server.agent_worker import (
     MAX_RETRIES,
     AgentWorker,
@@ -59,19 +61,10 @@ def make_dispatch_event(
 @pytest.mark.anyio
 async def test_agent_worker_processes_event(test_context, tmp_path):
     """AgentWorker processes an event."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant. Respond briefly.
-"""
+    create_test_agent(
+        tmp_path,
+        agent_id="test-agent",
+        system_prompt="You are a test assistant. Respond briefly.",
     )
 
     router = AgentWorker(test_context)
@@ -123,20 +116,7 @@ async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
 @pytest.mark.anyio
 async def test_session_executor_requeues_on_transient_error(test_context, tmp_path):
     """SessionExecutor requeues via INBOUND event on transient errors."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
@@ -181,20 +161,7 @@ You are a test assistant.
 @pytest.mark.anyio
 async def test_session_executor_recovers_missing_session(test_context, tmp_path):
     """SessionExecutor creates new session with same ID if session not found."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
@@ -214,19 +181,10 @@ You are a test assistant.
 @pytest.mark.anyio
 async def test_session_executor_runs_session(test_context, tmp_path):
     """SessionExecutor runs a session successfully."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant. Respond briefly.
-"""
+    create_test_agent(
+        tmp_path,
+        agent_id="test-agent",
+        system_prompt="You are a test assistant. Respond briefly.",
     )
 
     agent_def = test_context.agent_loader.load("test-agent")
@@ -241,19 +199,7 @@ You are a test assistant. Respond briefly.
 @pytest.mark.anyio
 async def test_session_executor_respects_semaphore(test_context, tmp_path):
     """SessionExecutor waits on semaphore before executing."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent", name="Test Agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
@@ -283,21 +229,14 @@ You are a test assistant.
 @pytest.mark.anyio
 async def test_agent_router_creates_semaphore_per_agent(test_context, tmp_path):
     """AgentWorker creates a semaphore for each agent on first event."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-
     # Create two test agents
     for agent_name in ["agent-a", "agent-b"]:
-        agent_dir = agents_dir / agent_name
-        agent_dir.mkdir(parents=True)
-        agent_md = agent_dir / "AGENT.md"
-        agent_md.write_text(
-            f"""---
-name: {agent_name}
-max_concurrency: 2
----
-You are {agent_name}.
-"""
+        create_test_agent(
+            tmp_path,
+            agent_id=agent_name,
+            name=agent_name,
+            system_prompt=f"You are {agent_name}.",
+            max_concurrency=2,
         )
 
     router = AgentWorker(test_context)
@@ -327,21 +266,14 @@ You are {agent_name}.
 @pytest.mark.anyio
 async def test_agent_router_concurrent_agents_dont_block(test_context, tmp_path):
     """AgentWorker allows concurrent agents to run without blocking each other."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-
     # Create two agents with concurrency 1 each
     for agent_name in ["agent-a", "agent-b"]:
-        agent_dir = agents_dir / agent_name
-        agent_dir.mkdir(parents=True)
-        agent_md = agent_dir / "AGENT.md"
-        agent_md.write_text(
-            f"""---
-name: {agent_name}
-max_concurrency: 1
----
-You are {agent_name}.
-"""
+        create_test_agent(
+            tmp_path,
+            agent_id=agent_name,
+            name=agent_name,
+            system_prompt=f"You are {agent_name}.",
+            max_concurrency=1,
         )
 
     router = AgentWorker(test_context)
@@ -360,19 +292,14 @@ You are {agent_name}.
 async def test_semaphore_cleanup_removes_stale_semaphores(test_context, tmp_path):
     """AgentWorker removes semaphores for deleted agents when threshold exceeded."""
     agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
 
     # Create 6 agents (exceeds CLEANUP_THRESHOLD of 5)
     for i in range(6):
-        agent_dir = agents_dir / f"agent-{i}"
-        agent_dir.mkdir(parents=True)
-        agent_md = agent_dir / "AGENT.md"
-        agent_md.write_text(
-            f"""---
-name: Agent {i}
----
-You are agent {i}.
-"""
+        create_test_agent(
+            tmp_path,
+            agent_id=f"agent-{i}",
+            name=f"Agent {i}",
+            system_prompt=f"You are agent {i}.",
         )
 
     router = AgentWorker(test_context)
@@ -410,20 +337,7 @@ You are agent {i}.
 @pytest.mark.anyio
 async def test_session_executor_publishes_result_on_success(test_context, tmp_path):
     """SessionExecutor should publish RESULT event when session succeeds."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
@@ -478,20 +392,7 @@ You are a test assistant.
 @pytest.mark.anyio
 async def test_session_executor_requeues_on_first_failure(test_context, tmp_path):
     """SessionExecutor should requeue via event with incremented retry_count on failure."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
@@ -538,20 +439,7 @@ async def test_session_executor_publishes_result_with_error_after_max_retries(
     test_context, tmp_path
 ):
     """SessionExecutor should publish RESULT event with error after MAX_RETRIES failures."""
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test-agent"
-    test_agent_dir.mkdir(parents=True)
-
-    agent_md = test_agent_dir / "AGENT.md"
-    agent_md.write_text(
-        """---
-name: Test Agent
-description: A test agent
----
-You are a test assistant.
-"""
-    )
+    create_test_agent(tmp_path, agent_id="test-agent")
 
     agent_def = test_context.agent_loader.load("test-agent")
     semaphore = asyncio.Semaphore(1)
