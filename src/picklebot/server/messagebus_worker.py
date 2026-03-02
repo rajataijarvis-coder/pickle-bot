@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from .worker import Worker
 from picklebot.core.agent import Agent
-from picklebot.core.events import InboundEvent, Source
-from picklebot.utils.def_loader import DefNotFoundError
+from picklebot.core.events import InboundEvent
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
@@ -21,39 +20,22 @@ class MessageBusWorker(Worker):
         self.buses = context.messagebus_buses
         self.bus_map = {bus.platform_name: bus for bus in self.buses}
 
-        # CLI session ID (CLI only has one session per worker)
-        self._cli_session_id: str | None = None
+    def _get_or_create_session_id(self, source: str, agent_id: str) -> str:
+        """Get existing session_id from source cache, or create new session."""
+        # Check source cache
+        source_info = self.context.config.sources.get(source)
+        if source_info:
+            return source_info["session_id"]
 
-        # Load default agent for session creation
-        try:
-            self.agent_def = context.agent_loader.load(context.config.default_agent)
-            self.agent = Agent(self.agent_def, context)
-        except DefNotFoundError as e:
-            self.logger.error(f"Agent not found: {context.config.default_agent}")
-            raise RuntimeError(f"Failed to initialize MessageBusWorker: {e}") from e
+        # Create new session
+        agent_def = self.context.agent_loader.load(agent_id)
+        agent = Agent(agent_def, self.context)
+        session = agent.new_session(source)
 
-    def _get_or_create_session_id(self, platform: str, user_id: str) -> str:
-        """Get existing session_id or create new session for this user."""
-        # CLI has a single session stored in the worker
-        if platform == "cli":
-            if not self._cli_session_id:
-                session = self.agent.new_session(Source.platform(platform, user_id))
-                self._cli_session_id = session.session_id
-            return self._cli_session_id
-
-        # Other platforms use typed config
-        platform_config = getattr(self.context.config.messagebus, platform, None)
-        if platform_config:
-            session_id = platform_config.sessions.get(user_id)
-            if session_id:
-                return session_id
-
-        # No existing session - create new
-        session = self.agent.new_session(Source.platform(platform, user_id))
+        # Update source cache
         self.context.config.set_runtime(
-            f"messagebus.{platform}.sessions.{user_id}", session.session_id
+            f"sources.{source}", {"session_id": session.session_id}
         )
-
         return session.session_id
 
     async def run(self) -> None:
@@ -93,21 +75,28 @@ class MessageBusWorker(Worker):
                         await bus.reply(result, context)
                     return
 
-                # Extract user_id from context
+                # Build source and resolve agent
                 user_id = context.user_id
-                session_id = self._get_or_create_session_id(platform, user_id)
+                source = f"{platform}:{user_id}"
+                agent_id = self.context.routing_table.resolve(source)
 
-                # Publish INBOUND event with typed context
+                if not agent_id:
+                    self.logger.debug(f"No routing match for {source}")
+                    return
+
+                session_id = self._get_or_create_session_id(source, agent_id)
+
+                # Publish INBOUND event
                 event = InboundEvent(
                     session_id=session_id,
-                    agent_id=self.context.config.default_agent,
-                    source=Source.platform(platform, user_id),
+                    agent_id=agent_id,
+                    source=source,
                     content=message,
                     timestamp=time.time(),
                     context=context,
                 )
                 await self.context.eventbus.publish(event)
-                self.logger.debug(f"Published INBOUND event from {event.source}")
+                self.logger.debug(f"Published INBOUND event from {source}")
 
             except Exception as e:
                 self.logger.error(f"Error processing message from {platform}: {e}")

@@ -2,7 +2,7 @@
 
 import asyncio
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock, Mock
 from dataclasses import dataclass
 
 from picklebot.server.messagebus_worker import MessageBusWorker
@@ -124,9 +124,11 @@ You are a test assistant.
         published_events.append(event)
 
     with patch.object(test_context, "messagebus_buses", [bus]):
+        # Mock routing table to return test agent
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
         # Patch _get_or_create_session_id to return a known session ID for testing
-        worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        worker._get_or_create_session_id = lambda source, agent_id: "test-session-123"
         # Subscribe to capture events
         test_context.eventbus.subscribe(InboundEvent, capture_event)
 
@@ -228,18 +230,20 @@ You are a test assistant.
 
     bus = FakeBusWithUser()
     with patch.object(test_context, "messagebus_buses", [bus]):
+        # Mock routing table
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
 
     # Should NOT have global_session anymore
     assert not hasattr(worker, "global_session")
 
-    # Should have agent for session creation
-    assert worker.agent is not None
+    # Should NOT pre-load agent anymore (it's lazy loaded per source)
+    assert not hasattr(worker, "agent")
 
 
 @pytest.mark.anyio
 async def test_messagebus_worker_reuses_existing_session(test_context, tmp_path):
-    """MessageBusWorker reuses session from config for returning users."""
+    """MessageBusWorker reuses session from source cache for returning users."""
     # Create test agent
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
@@ -257,16 +261,10 @@ You are a test assistant.
 """
     )
 
-    # Pre-configure a session for user "123"
-    from picklebot.utils.config import TelegramConfig, MessageBusConfig
-
-    test_context.config.messagebus = MessageBusConfig(
-        enabled=True,
-        default_platform="telegram",
-        telegram=TelegramConfig(
-            bot_token="test", sessions={"123": "existing-session-uuid"}
-        ),
-    )
+    # Pre-configure a session in source cache
+    test_context.config.sources = {
+        "telegram:123": {"session_id": "existing-session-uuid"}
+    }
 
     bus = FakeTelegramBus()
     published_events: list[InboundEvent] = []
@@ -275,6 +273,8 @@ You are a test assistant.
         published_events.append(event)
 
     with patch.object(test_context, "messagebus_buses", [bus]):
+        # Mock routing table
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
         test_context.eventbus.subscribe(InboundEvent, capture_event)
 
@@ -332,8 +332,10 @@ You are a test assistant.
         published_events.append(event)
 
     with patch.object(test_context, "messagebus_buses", [bus]):
+        # Mock routing table
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
-        worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        worker._get_or_create_session_id = lambda source, agent_id: "test-session-123"
         test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
@@ -428,14 +430,15 @@ class TestMessageBusWorkerSlashCommands:
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_uses_default_agent(test_context, tmp_path):
-    """MessageBusWorker uses default agent from config."""
-    # Create test agent with the default agent name from test_context ("test")
+async def test_messagebus_worker_uses_routing_table(test_context, tmp_path):
+    """MessageBusWorker uses routing table to resolve agents."""
+    # Create test agents
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir(parents=True)
-    test_agent_dir = agents_dir / "test"  # matches default_agent from test config
-    test_agent_dir.mkdir(parents=True)
 
+    # Create test agent
+    test_agent_dir = agents_dir / "test"
+    test_agent_dir.mkdir(parents=True)
     agent_md = test_agent_dir / "AGENT.md"
     agent_md.write_text(
         """---
@@ -449,13 +452,17 @@ You are a test assistant.
 
     bus = FakeBusWithUser()
     with patch.object(test_context, "messagebus_buses", [bus]):
-        # Create worker (uses default agent from config)
+        # Mock routing table to resolve to test agent
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
-        worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        worker._get_or_create_session_id = lambda source, agent_id: "test-session-123"
 
-    # Worker should use the default agent from config
-    assert worker.agent_def.id == "test"
-    assert worker.agent_def.name == "Test Agent"
+    # Worker should not pre-load any agent
+    assert not hasattr(worker, "agent_def")
+    assert not hasattr(worker, "agent")
+
+    # Routing should be done via routing_table.resolve
+    assert test_context.routing_table.resolve("fake:123") == "test"
 
 
 @pytest.mark.anyio
@@ -485,8 +492,10 @@ You are a test assistant.
         published_events.append(event)
 
     with patch.object(test_context, "messagebus_buses", [bus]):
+        # Mock routing table
+        test_context.routing_table.resolve = Mock(return_value="test")
         worker = MessageBusWorker(test_context)
-        worker._get_or_create_session_id = lambda platform, user_id: "test-session-123"
+        worker._get_or_create_session_id = lambda source, agent_id: "test-session-123"
         test_context.eventbus.subscribe(InboundEvent, capture_event)
 
     # Start EventBus worker to process queued events
@@ -513,3 +522,85 @@ You are a test assistant.
             await eventbus_task
         except asyncio.CancelledError:
             pass
+
+
+class TestMessageBusWorkerRouting:
+    """Tests for new routing-based MessageBusWorker."""
+
+    @pytest.fixture
+    def mock_context(self):
+        """Create mock context with routing setup."""
+        from unittest.mock import Mock, AsyncMock
+        from picklebot.core.agent_loader import AgentDef
+        from picklebot.utils.config import LLMConfig
+
+        context = Mock()
+        context.config = Mock()
+        context.config.default_agent = "pickle"
+        context.config.sources = {}
+        context.config.messagebus = Mock()
+        context.config.messagebus.enabled = True
+        context.config.routing = {
+            "bindings": [
+                {"agent": "cookie", "value": "telegram:123456"},
+                {"agent": "pickle", "value": "telegram:.*"},
+            ]
+        }
+
+        context.routing_table = Mock()
+        context.routing_table.resolve = Mock(return_value="cookie")
+
+        # Create a proper AgentDef mock with llm config
+        agent_def = AgentDef(
+            id="cookie",
+            name="Cookie Agent",
+            description="Test agent",
+            system_prompt="You are a test agent.",
+            llm=LLMConfig(provider="openai", model="gpt-4", api_key="test-key"),
+        )
+        context.agent_loader = Mock()
+        context.agent_loader.load = Mock(return_value=agent_def)
+
+        context.eventbus = Mock()
+        context.eventbus.publish = AsyncMock()
+
+        context.messagebus_buses = []
+        context.command_registry = Mock()
+        context.command_registry.dispatch = Mock(return_value=None)
+
+        return context
+
+    def test_messagebus_worker_no_default_agent_in_init(self, mock_context):
+        """MessageBusWorker should not pre-load default agent."""
+        worker = MessageBusWorker(mock_context)
+
+        assert not hasattr(worker, "agent_def")
+        assert not hasattr(worker, "agent")
+
+    def test_get_or_create_session_uses_source_cache(self, mock_context):
+        """_get_or_create_session_id should check source cache first."""
+        mock_context.config.sources = {
+            "telegram:123456": {"session_id": "existing-session"}
+        }
+
+        worker = MessageBusWorker(mock_context)
+        session_id = worker._get_or_create_session_id("telegram:123456", "cookie")
+
+        assert session_id == "existing-session"
+
+    def test_get_or_create_session_creates_new(self, mock_context):
+        """_get_or_create_session_id should create session if not cached."""
+        mock_context.config.set_runtime = Mock()
+        mock_context.config.sources = {}
+
+        with patch("picklebot.server.messagebus_worker.Agent") as MockAgent:
+            mock_session = Mock(session_id="new-session-id")
+            MockAgent.return_value.new_session.return_value = mock_session
+
+            worker = MessageBusWorker(mock_context)
+            session_id = worker._get_or_create_session_id("telegram:123456", "cookie")
+
+            assert session_id == "new-session-id"
+            mock_context.config.set_runtime.assert_called_once_with(
+                "sources.telegram:123456", {"session_id": "new-session-id"}
+            )
