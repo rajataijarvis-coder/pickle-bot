@@ -57,8 +57,8 @@ class MockConfig:
 
 
 class MockContext:
-    def __init__(self, bindings):
-        self.config = MockConfig(bindings)
+    def __init__(self, bindings, default_agent="pickle"):
+        self.config = MockConfig(bindings, default_agent=default_agent)
 
 
 def test_routing_table_resolve_exact_match():
@@ -88,7 +88,7 @@ def test_routing_table_resolve_wildcard():
 
 
 def test_routing_table_resolve_no_match():
-    """RoutingTable should return None if no pattern matches."""
+    """RoutingTable should return default_agent if no pattern matches."""
     context = MockContext(
         [
             {"agent": "pickle", "value": "telegram:.*"},
@@ -96,7 +96,20 @@ def test_routing_table_resolve_no_match():
     )
     table = RoutingTable(context)
 
-    assert table.resolve("discord:123") is None
+    assert table.resolve("discord:123") == "pickle"
+
+
+def test_routing_table_resolve_fallback_to_default():
+    """RoutingTable should return default_agent if no pattern matches."""
+    context = MockContext(
+        [
+            {"agent": "pickle", "value": "telegram:.*"},
+        ],
+        default_agent="cookie",
+    )
+    table = RoutingTable(context)
+
+    assert table.resolve("discord:123") == "cookie"
 
 
 def test_routing_table_tier_priority():

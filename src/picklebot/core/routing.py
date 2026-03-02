@@ -66,9 +66,9 @@ class RoutingTable:
 
         return self._bindings
 
-    def resolve(self, source: str) -> str | None:
-        """Return agent_id for source, or None if no match."""
+    def resolve(self, source: str) -> str:
+        """Return agent_id for source, falling back to default_agent if no match."""
         for binding in self._load_bindings():
             if binding.pattern.match(source):
                 return binding.agent
-        return None
+        return self._context.config.default_agent
