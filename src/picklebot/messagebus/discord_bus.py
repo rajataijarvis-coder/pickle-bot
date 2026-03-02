@@ -8,19 +8,15 @@ from typing import Callable, Awaitable
 import discord
 
 from picklebot.core.events import EventSource
-from picklebot.messagebus.base import MessageBus, MessageContext
+from picklebot.messagebus.base import MessageBus
 from picklebot.utils.config import DiscordConfig
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class DiscordEventSource(EventSource, MessageContext):
-    """Source for Discord-originated events.
-
-    Also serves as the MessageContext for DiscordBus, carrying all
-    necessary data (user_id for whitelisting, channel_id for replying).
-    """
+class DiscordEventSource(EventSource):
+    """Source for Discord-originated events."""
 
     _namespace = "platform-discord"
     user_id: str
