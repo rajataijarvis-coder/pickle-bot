@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 from picklebot.server.delivery_worker import DeliveryWorker
 from picklebot.core.events import OutboundEvent
 
@@ -81,7 +81,6 @@ async def test_handle_event_skips_if_no_source(mock_context):
 async def test_handle_event_delivers_to_platform(mock_context):
     """handle_event should deliver to platform from session source."""
     from picklebot.core.history import HistorySession
-    from picklebot.messagebus.telegram_bus import TelegramContext
 
     mock_session = HistorySession(
         id="session-123",

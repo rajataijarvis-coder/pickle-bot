@@ -161,6 +161,10 @@ class DeliveryWorker(SubscriberWorker):
             return DiscordContext(
                 user_id=user_id, channel_id=stored.get("channel_id", user_id)
             )
+        elif platform == "cli":
+            from picklebot.messagebus.cli_bus import CliContext
+
+            return CliContext(user_id=user_id)
         else:
             raise ValueError(f"Unknown platform: {platform}")
 

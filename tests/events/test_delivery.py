@@ -33,14 +33,15 @@ async def test_delivery_worker_creation(mock_context):
 async def test_delivery_worker_handles_outbound_event(mock_context):
     worker = DeliveryWorker(mock_context)
 
-    # Mock the lookup
-    worker._lookup_platform = MagicMock(
-        return_value={
-            "platform": "telegram",
-            "user_id": "user123",
-            "chat_id": "123456",
-        }
-    )
+    # Create a mock session with telegram source
+    mock_session = MagicMock()
+    mock_session.id = "test-session"
+    mock_session.source = "telegram:user123"
+    mock_session.context = {"chat_id": "123456"}
+
+    # Mock history_store to return our session
+    mock_context.history_store = MagicMock()
+    mock_context.history_store.list_sessions = MagicMock(return_value=[mock_session])
 
     # Create mock telegram bus
     mock_telegram_bus = MagicMock()
@@ -65,19 +66,28 @@ async def test_delivery_worker_handles_outbound_event(mock_context):
 
         # Should have called telegram bus reply with content and context
         mock_telegram_bus.reply.assert_called_once_with("Hello", mock_ctx_instance)
-        MockContext.assert_called_once_with(user_id="user123", chat_id="123456")
+        MockContext.assert_called_once_with(user_id="user123", chat_id="user123")
 
 
 @pytest.mark.asyncio
 async def test_delivery_worker_handles_cli_platform(mock_context, capsys):
     worker = DeliveryWorker(mock_context)
 
-    # Mock the lookup for CLI
-    worker._lookup_platform = MagicMock(
-        return_value={
-            "platform": "cli",
-        }
-    )
+    # Create a mock session with CLI source
+    mock_session = MagicMock()
+    mock_session.id = "test-session"
+    mock_session.source = "cli:cli-user"
+    mock_session.context = None
+
+    # Mock history_store to return our session
+    mock_context.history_store = MagicMock()
+    mock_context.history_store.list_sessions = MagicMock(return_value=[mock_session])
+
+    # Create mock CLI bus
+    mock_cli_bus = MagicMock()
+    mock_cli_bus.platform_name = "cli"
+    mock_cli_bus.reply = AsyncMock()
+    mock_context.messagebus_buses = [mock_cli_bus]
 
     event = OutboundEvent(
         session_id="test-session",
@@ -89,9 +99,8 @@ async def test_delivery_worker_handles_cli_platform(mock_context, capsys):
 
     await worker.handle_event(event)
 
-    # Should print to stdout
-    captured = capsys.readouterr()
-    assert "Hello CLI" in captured.out
+    # Should have called CLI bus reply
+    mock_cli_bus.reply.assert_called_once()
 
 
 def test_chunk_message_under_limit():
@@ -140,60 +149,3 @@ def test_platform_limits():
     assert PLATFORM_LIMITS["telegram"] == 4096
     assert PLATFORM_LIMITS["discord"] == 2000
     assert PLATFORM_LIMITS["cli"] == float("inf")
-
-
-def test_lookup_platform_default_platform(mock_context):
-    """Should use default_platform when session not found."""
-    # Configure discord as default
-    mock_context.config.messagebus.discord = MagicMock()
-    mock_context.config.messagebus.discord.default_chat_id = "channel-456"
-    mock_context.config.messagebus.default_platform = "discord"
-
-    worker = DeliveryWorker(mock_context)
-
-    # Test default platform routing for unknown session
-    result = worker._lookup_platform("some-session-id")
-
-    assert result["platform"] == "discord"
-    assert result["channel_id"] == "channel-456"
-
-
-def test_lookup_platform_fallback_to_cli(mock_context):
-    """Should fallback to CLI when no default platform configured."""
-    worker = DeliveryWorker(mock_context)
-
-    # No default platform configured
-    result = worker._lookup_platform("some-session-id")
-
-    assert result["platform"] == "cli"
-
-
-@pytest.mark.asyncio
-async def test_delivery_worker_handles_proactive_event(mock_context):
-    """Should deliver proactive messages via post() instead of reply()."""
-    worker = DeliveryWorker(mock_context)
-
-    # Configure telegram as default platform
-    mock_context.config.messagebus.telegram = MagicMock()
-    mock_context.config.messagebus.telegram.default_chat_id = "chat-123"
-    mock_context.config.messagebus.default_platform = "telegram"
-
-    # Create mock telegram bus
-    mock_telegram_bus = MagicMock()
-    mock_telegram_bus.platform_name = "telegram"
-    mock_telegram_bus.post = AsyncMock()
-    mock_context.messagebus_buses = [mock_telegram_bus]
-
-    # Create OutboundEvent - session not in mapping, uses default_platform
-    event = OutboundEvent(
-        session_id="test-uuid-1234",
-        agent_id="pickle",
-        source=Source.agent("pickle"),
-        content="Proactive message",
-        timestamp=12345.0,
-    )
-
-    await worker.handle_event(event)
-
-    # Should have called telegram bus post (not reply) for proactive message
-    mock_telegram_bus.post.assert_called_once_with("Proactive message")

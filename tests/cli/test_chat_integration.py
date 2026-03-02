@@ -43,6 +43,11 @@ You are a test assistant.
         messagebus=MessageBusConfig(
             enabled=False,  # CLI bypasses config anyway
         ),
+        routing={
+            "bindings": [
+                {"agent": "test-agent", "value": "cli:.*"},
+            ]
+        },
     )
 
 
