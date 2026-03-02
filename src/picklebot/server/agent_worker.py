@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Union
 from .worker import SubscriberWorker
 from picklebot.core.agent import Agent
 from picklebot.core.events import (
+    AgentEventSource,
     Event,
     Source,
     InboundEvent,
@@ -63,17 +64,15 @@ class SessionExecutor:
 
             # Extract source from event
             source = self.event.source
-            # context now comes from source (EventSource) - will be extracted in subsequent task
-            context = None
 
             if session_id:
                 try:
                     session = agent.resume_session(session_id)
                 except ValueError:
                     logger.warning(f"Session {session_id} not found, creating new")
-                    session = agent.new_session(source, context, session_id=session_id)
+                    session = agent.new_session(source, session_id=session_id)
             else:
-                session = agent.new_session(source, context)
+                session = agent.new_session(source)
                 session_id = session.session_id
 
             response = await session.chat(self.event.content)
@@ -84,14 +83,14 @@ class SessionExecutor:
                 result_event: Event = DispatchResultEvent(
                     session_id=session_id,
                     agent_id=self.agent_def.id,
-                    source=Source.agent(self.agent_def.id),
+                    source=AgentEventSource(self.agent_def.id),
                     content=response,
                 )
             else:
                 result_event: Event = OutboundEvent(
                     session_id=session_id,
                     agent_id=self.agent_def.id,
-                    source=Source.agent(self.agent_def.id),
+                    source=AgentEventSource(self.agent_def.id),
                     content=response,
                 )
             await self.context.eventbus.publish(result_event)
@@ -113,7 +112,7 @@ class SessionExecutor:
                     result_event = DispatchResultEvent(
                         session_id=session_id,
                         agent_id=self.agent_def.id,
-                        source=Source.agent(self.agent_def.id),
+                        source=AgentEventSource(self.agent_def.id),
                         content="",
                         error=str(e),
                     )
@@ -121,7 +120,7 @@ class SessionExecutor:
                     result_event = OutboundEvent(
                         session_id=session_id,
                         agent_id=self.agent_def.id,
-                        source=Source.agent(self.agent_def.id),
+                        source=AgentEventSource(self.agent_def.id),
                         content="",
                         error=str(e),
                     )
@@ -163,7 +162,7 @@ class AgentWorker(SubscriberWorker):
                 result_event: Event = DispatchResultEvent(
                     session_id=event.session_id,
                     agent_id=agent_id,
-                    source="agent:dispatcher",
+                    source=AgentEventSource(agent_id),
                     content="",
                     error=str(e),
                 )
@@ -171,7 +170,7 @@ class AgentWorker(SubscriberWorker):
                 result_event: Event = OutboundEvent(
                     session_id=event.session_id,
                     agent_id=agent_id,
-                    source="agent:dispatcher",
+                    source=AgentEventSource(agent_id),
                     content="",
                     error=str(e),
                 )

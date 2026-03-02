@@ -207,25 +207,6 @@ def test_post_message_availability(test_config, source, expected):
 
     assert ("post_message" in tool_names) == expected
 
-
-class TestAgentSessionWithSource:
-    """Tests for AgentSession with source field."""
-
-    def test_agent_session_has_source_field(self):
-        """AgentSession should have source field."""
-        from dataclasses import fields
-
-        field_names = [f.name for f in fields(AgentSession)]
-        assert "source" in field_names
-
-    def test_agent_session_has_context_field(self):
-        """AgentSession should have context field for MessageContext."""
-        from dataclasses import fields
-
-        field_names = [f.name for f in fields(AgentSession)]
-        assert "context" in field_names
-
-
 class TestAgentNewSessionWithSource:
     """Tests for Agent.new_session with source parameter."""
 

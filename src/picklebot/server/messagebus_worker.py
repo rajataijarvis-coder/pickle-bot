@@ -79,10 +79,6 @@ class MessageBusWorker(Worker):
                 source_str = str(source)
                 agent_id = self.context.routing_table.resolve(source_str)
 
-                if not agent_id:
-                    self.logger.debug(f"No routing match for {source_str}")
-                    return
-
                 session_id = self._get_or_create_session_id(source_str, agent_id)
 
                 # Publish INBOUND event with typed source

@@ -3,9 +3,10 @@ import json
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from picklebot.core.history import HistoryMessage
+from picklebot.core.events import EventSource
 from picklebot.provider.llm import LLMProvider
 from picklebot.tools.registry import ToolRegistry
 from picklebot.tools.skill_tool import create_skill_tool
@@ -22,11 +23,10 @@ from litellm.types.completion import (
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
     from picklebot.core.agent_loader import AgentDef
-    from picklebot.core.events import EventSource
     from picklebot.provider.llm import LLMToolCall
 
 
-def get_source_settings(source: "EventSource | str") -> tuple[int, bool]:
+def get_source_settings(source: Union[EventSource, str]) -> tuple[int, bool]:
     """Return (max_history, post_message) settings for a given source.
 
     Args:
@@ -35,15 +35,15 @@ def get_source_settings(source: "EventSource | str") -> tuple[int, bool]:
     Returns:
         Tuple of (max_history, post_message_enabled)
     """
-    # Accept both EventSource objects and strings for backwards compatibility
-    if hasattr(source, "is_cron"):
-        # EventSource object
-        is_cron = source.is_cron  # type: ignore
-    else:
-        # String (legacy)
-        is_cron = str(source).startswith("cron:")
+    # Handle string sources - check for cron prefix directly for backwards compat
+    if isinstance(source, str):
+        # Old format check: "cron:xxx" or new format "cron:xxx"
+        if source.startswith("cron:"):
+            return (50, True)
+        return (100, False)
 
-    if is_cron:
+    # EventSource object
+    if source.is_cron:
         return (50, True)
     return (100, False)
 
@@ -102,8 +102,7 @@ class Agent:
 
     def new_session(
         self,
-        source: str,
-        context: "MessageContext | None" = None,
+        source: "EventSource",
         session_id: str | None = None,
     ) -> "AgentSession":
         """
@@ -111,7 +110,6 @@ class Agent:
 
         Args:
             source: Event source (e.g., "telegram:user_123", "cron:daily")
-            context: Optional MessageContext from the message bus
             session_id: Optional session_id to use (for recovery scenarios)
 
         Returns:
@@ -125,13 +123,6 @@ class Agent:
         # Build tools for this session
         tools = self._build_tools(include_post_message)
 
-        # Serialize context for storage if provided
-        context_dict = None
-        if context is not None:
-            context_dict = (
-                context.model_dump() if hasattr(context, "model_dump") else None
-            )
-
         session = AgentSession(
             session_id=session_id,
             agent_id=self.agent_def.id,
@@ -139,12 +130,11 @@ class Agent:
             agent=self,
             tools=tools,
             source=source,
-            context=context,
             max_history=max_history,
         )
 
         self.context.history_store.create_session(
-            self.agent_def.id, session_id, source, context_dict
+            self.agent_def.id, session_id, source
         )
         return session
 
@@ -168,8 +158,8 @@ class Agent:
 
         session_info = session_query[0]
 
-        # Derive settings from stored source (default to empty string if not stored)
-        source = session_info.source or ""
+        # Get typed EventSource from stored string
+        source = session_info.get_source()
         max_history, include_post_message = get_source_settings(source)
 
         history_messages = self.context.history_store.get_messages(
@@ -189,7 +179,6 @@ class Agent:
             agent=self,
             tools=tools,
             source=source,
-            context=None,  # Context not available when resuming
             messages=messages,
             max_history=max_history,
         )
@@ -204,10 +193,9 @@ class AgentSession:
     shared_context: "SharedContext"  # Shared app context (DI container)
     agent: Agent  # Reference to parent agent for LLM access
     tools: ToolRegistry  # Session's own tool registry
-    source: str  # Event source (e.g., "telegram:user_123", "cron:daily")
+    source: "EventSource"  # Event source (e.g., "telegram:user_123", "cron:daily")
     max_history: int  # Max messages to include in LLM context
 
-    context: "MessageContext | None" = None  # Platform-specific message context
     messages: list[Message] = field(default_factory=list)
     started_at: datetime = field(default_factory=datetime.now)
 

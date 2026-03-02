@@ -10,6 +10,7 @@ import pytest
 
 from tests.helpers import create_test_agent
 
+from picklebot.messagebus.telegram_bus import TelegramEventSource
 from picklebot.server.agent_worker import (
     MAX_RETRIES,
     AgentWorker,
@@ -32,7 +33,7 @@ def make_inbound_event(
     return InboundEvent(
         session_id=session_id or str(uuid.uuid4()),
         agent_id=agent_id,
-        source="test:platform",
+        source=TelegramEventSource("1", "1"),
         content=content,
         timestamp=time.time(),
         retry_count=retry_count,
@@ -505,12 +506,10 @@ async def test_agent_dispatcher_handles_inbound_event(test_context):
 
     router._dispatch_event = capture_dispatch  # type: ignore
 
-    event = InboundEvent(
+    event = make_inbound_event(
+        content="Hello world",
         session_id="test-session",
         agent_id="test-agent",
-        source="test:platform",
-        content="Hello world",
-        timestamp=time.time(),
     )
 
     await router._dispatch_event(event)

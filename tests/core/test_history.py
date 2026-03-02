@@ -503,7 +503,7 @@ class TestGetMessagesChunking:
 
 
 class TestHistoryStoreWithSource:
-    """Tests for HistoryStore with source/context support."""
+    """Tests for HistoryStore with source support."""
 
     def test_create_session_with_source(self, history_store):
         """create_session should store source."""
@@ -513,21 +513,6 @@ class TestHistoryStoreWithSource:
             source="telegram:user_456",
         )
         assert result["source"] == "telegram:user_456"
-
-    def test_create_session_with_source_and_context(self, history_store):
-        """create_session should store source and context."""
-        context = {
-            "user_id": "456",
-            "chat_id": "789",
-        }
-        result = history_store.create_session(
-            agent_id="pickle",
-            session_id="test-123",
-            source="platform-telegram:456:789",
-            context=context,
-        )
-        assert result["source"] == "platform-telegram:456:789"
-        assert result["context"] == context
 
     def test_list_sessions_includes_source(self, history_store):
         """list_sessions should return sessions with source."""
@@ -546,7 +531,6 @@ class TestHistoryStoreWithSource:
             agent_id="pickle",
             session_id="test-123",
             source="telegram:user_456",
-            context={"type": "TelegramContext", "data": {"user_id": "456"}},
         )
 
         # Find the session
@@ -555,11 +539,10 @@ class TestHistoryStoreWithSource:
 
         assert session is not None
         assert session.source == "telegram:user_456"
-        assert session.context is not None
 
 
 class TestHistorySessionWithSource:
-    """Tests for HistorySession with source and context fields."""
+    """Tests for HistorySession with source fields."""
 
     def test_history_session_has_source_field(self):
         """HistorySession should accept source field."""
@@ -572,40 +555,12 @@ class TestHistorySessionWithSource:
         )
         assert session.source == "telegram:user_123"
 
-    def test_history_session_has_context_field(self):
-        """HistorySession should accept context field."""
-        context_data = {
-            "type": "TelegramContext",
-            "data": {"user_id": "123", "chat_id": "456"},
-        }
-        session = HistorySession(
-            id="test-session",
-            agent_id="pickle",
-            source="telegram:user_123",
-            context=context_data,
-            created_at="2024-01-01T00:00:00",
-            updated_at="2024-01-01T00:00:00",
-        )
-        assert session.context == context_data
-
-    def test_history_session_context_defaults_to_none(self):
-        """HistorySession context should default to None."""
-        session = HistorySession(
-            id="test-session",
-            agent_id="pickle",
-            source="cron:daily",
-            created_at="2024-01-01T00:00:00",
-            updated_at="2024-01-01T00:00:00",
-        )
-        assert session.context is None
-
     def test_history_session_json_roundtrip_with_source(self):
         """HistorySession with source should serialize/deserialize correctly."""
         original = HistorySession(
             id="test-session",
             agent_id="pickle",
             source="telegram:user_123",
-            context={"type": "TelegramContext", "data": {"user_id": "123"}},
             chunk_count=1,
             title="Test Chat",
             message_count=5,
@@ -617,4 +572,3 @@ class TestHistorySessionWithSource:
         restored = HistorySession.model_validate_json(json_str)
 
         assert restored.source == original.source
-        assert restored.context == original.context

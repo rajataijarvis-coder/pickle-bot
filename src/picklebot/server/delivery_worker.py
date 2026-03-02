@@ -122,8 +122,8 @@ class DeliveryWorker(SubscriberWorker):
                 )
                 return
 
-            # Parse source string to EventSource
-            source = EventSource.from_string(session_info.source)
+            # Get typed EventSource from stored string
+            source = session_info.get_source()
 
             # Get platform name from source
             platform = source.platform_name

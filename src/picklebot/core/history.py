@@ -2,10 +2,13 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, TYPE_CHECKING
+from typing import Any, Literal, TYPE_CHECKING, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, field_serializer
+
+from picklebot.core.events import EventSource
 from litellm.types.completion import ChatCompletionMessageParam as Message
+
 
 if TYPE_CHECKING:
     from picklebot.utils.config import Config
@@ -21,13 +24,24 @@ class HistorySession(BaseModel):
 
     id: str
     agent_id: str
-    source: str = ""  # Origin of session (e.g., "telegram:user_123", "cron:daily")
-    context: dict[str, Any] | None = None  # Serialized MessageContext
+    source: str  # Serialized EventSource (e.g., "platform-telegram:123:456")
     chunk_count: int = 1  # Number of chunk files
     title: str | None = None
     message_count: int = 0
     created_at: str
     updated_at: str
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def parse_source(cls, v: Any) -> str:
+        """Convert EventSource to string if needed."""
+        if hasattr(v, "__str__"):
+            return str(v)
+        return v
+
+    def get_source(self) -> EventSource:
+        """Get the typed EventSource object."""
+        return EventSource.from_string(self.source)
 
 
 class HistoryMessage(BaseModel):
@@ -191,8 +205,7 @@ class HistoryStore:
         self,
         agent_id: str,
         session_id: str,
-        source: str,
-        context: dict[str, Any] | None = None,
+        source: "EventSource",
     ) -> dict[str, Any]:
         """Create a new conversation session.
 
@@ -200,7 +213,6 @@ class HistoryStore:
             agent_id: ID of the agent
             session_id: Unique session identifier
             source: Origin of the session (e.g., "telegram:user_123")
-            context: Optional serialized MessageContext
 
         Returns:
             Session metadata dict
@@ -210,7 +222,6 @@ class HistoryStore:
             id=session_id,
             agent_id=agent_id,
             source=source,
-            context=context,
             chunk_count=1,
             title=None,
             message_count=0,
