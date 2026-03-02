@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from picklebot.messagebus.telegram_bus import TelegramBus, TelegramContext
+from picklebot.messagebus.telegram_bus import TelegramBus, TelegramEventSource
 from picklebot.utils.config import TelegramConfig
 
 
@@ -24,13 +24,13 @@ class TestTelegramBusReply:
         config = TelegramConfig(bot_token="test_token")
         bus = TelegramBus(config)
 
-        ctx = TelegramContext(user_id="user123", chat_id="456789")
+        source = TelegramEventSource(user_id="user123", chat_id="456789")
         with pytest.raises(RuntimeError, match="TelegramBus not started"):
-            await bus.reply(content="Hello, world!", context=ctx)
+            await bus.reply(content="Hello, world!", source=source)
 
     @pytest.mark.anyio
     async def test_reply_sends_to_chat_id(self):
-        """reply should send to context.chat_id."""
+        """reply should send to source.chat_id."""
         config = TelegramConfig(bot_token="test-token")
         bus = TelegramBus(config)
 
@@ -38,8 +38,8 @@ class TestTelegramBusReply:
         mock_app.bot.send_message = AsyncMock()
         bus.application = mock_app
 
-        ctx = TelegramContext(user_id="user123", chat_id="456789")
-        await bus.reply(content="Test reply", context=ctx)
+        source = TelegramEventSource(user_id="user123", chat_id="456789")
+        await bus.reply(content="Test reply", source=source)
 
         call_args = mock_app.bot.send_message.call_args
         assert call_args.kwargs["chat_id"] == 456789
@@ -95,7 +95,7 @@ class TestTelegramBusRunStop:
         bus = TelegramBus(config)
         mock_app = _create_mock_telegram_app()
 
-        async def dummy_callback(msg: str, ctx: TelegramContext) -> None:
+        async def dummy_callback(msg: str, source: TelegramEventSource) -> None:
             pass
 
         with patch(
@@ -119,7 +119,7 @@ class TestTelegramBusRunStop:
         bus = TelegramBus(config)
         mock_app = _create_mock_telegram_app()
 
-        async def dummy_callback(msg: str, ctx: TelegramContext) -> None:
+        async def dummy_callback(msg: str, source: TelegramEventSource) -> None:
             pass
 
         with patch(
@@ -143,7 +143,7 @@ class TestTelegramBusRunStop:
         bus = TelegramBus(config)
         mock_app = _create_mock_telegram_app()
 
-        async def dummy_callback(msg: str, ctx: TelegramContext) -> None:
+        async def dummy_callback(msg: str, source: TelegramEventSource) -> None:
             pass
 
         with patch(
@@ -174,7 +174,7 @@ class TestTelegramBusRunStop:
         bus = TelegramBus(config)
         mock_app = _create_mock_telegram_app()
 
-        async def dummy_callback(msg: str, ctx: TelegramContext) -> None:
+        async def dummy_callback(msg: str, source: TelegramEventSource) -> None:
             pass
 
         with patch(
