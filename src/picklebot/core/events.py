@@ -166,7 +166,7 @@ class Event:
 
     session_id: str
     agent_id: str
-    source: str
+    source: EventSource  # Changed from str to typed EventSource
     content: str
     timestamp: float = field(default_factory=time.time)
 
@@ -176,7 +176,9 @@ class Event:
         # Add all dataclass fields
         for field_name in self.__dataclass_fields__:
             value = getattr(self, field_name)
-            if field_name == "context":
+            if field_name == "source":
+                result[field_name] = str(value)  # Serialize via __str__
+            elif field_name == "context":
                 result[field_name] = _serialize_context(value)
             else:
                 result[field_name] = value
@@ -191,7 +193,9 @@ class Event:
         for k, v in data.items():
             if k == "type":
                 continue
-            if k == "context":
+            if k == "source":
+                kwargs[k] = EventSource.from_string(v)  # Deserialize
+            elif k == "context":
                 kwargs[k] = _deserialize_context(v)
             elif k in cls.__dataclass_fields__:
                 kwargs[k] = v
