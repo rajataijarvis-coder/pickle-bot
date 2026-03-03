@@ -98,7 +98,7 @@ class TelegramBus(MessageBus[TelegramEventSource]):
                 except Exception as e:
                     logger.error(f"Error in message callback: {e}")
 
-        handler = MessageHandler(filters.TEXT & filters.COMMAND, handle_message)
+        handler = MessageHandler(filters.TEXT, handle_message)
         self.application.add_handler(handler)
 
         # Start the bot
