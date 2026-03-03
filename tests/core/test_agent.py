@@ -327,3 +327,19 @@ class TestAgentNewSessionWithSource:
         stored = next((s for s in sessions if s.id == session.session_id), None)
         assert stored is not None
         assert stored.source == str(source)
+
+
+def test_session_builds_prompt_with_layers(test_agent):
+    """AgentSession._build_messages should use PromptBuilder."""
+    source = TelegramEventSource(user_id="123", chat_id="456")
+    session = test_agent.new_session(source=source)
+
+    messages = session._build_messages()
+    system_prompt = messages[0]["content"]
+
+    # Should include agent_md
+    assert "You are a test assistant." in system_prompt
+    # Should include channel hint
+    assert "telegram" in system_prompt.lower()
+    # Should include runtime
+    assert "Agent:" in system_prompt
