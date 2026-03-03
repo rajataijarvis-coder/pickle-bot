@@ -184,3 +184,22 @@ class TestPromptBuilderBootstrap:
 
         assert "Daily Summary" in prompt
         assert "Sends daily summary" in prompt
+
+
+class TestPromptBuilderIntegration:
+    """Tests for SharedContext integration."""
+
+    def test_shared_context_has_prompt_builder(self, test_config):
+        """SharedContext should have prompt_builder."""
+        from picklebot.core.context import SharedContext
+
+        context = SharedContext(config=test_config)
+        assert hasattr(context, "prompt_builder")
+        assert context.prompt_builder is not None
+
+    def test_prompt_builder_uses_context_paths(self, test_config, tmp_path):
+        """PromptBuilder should use workspace path from context."""
+        from picklebot.core.context import SharedContext
+
+        context = SharedContext(config=test_config)
+        assert context.prompt_builder.workspace_path == tmp_path
