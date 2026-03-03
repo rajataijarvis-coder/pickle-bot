@@ -9,7 +9,6 @@ from picklebot.core.events import (
     AgentEventSource,
     DispatchEvent,
     DispatchResultEvent,
-    Source,
 )
 from picklebot.tools.base import BaseTool, tool
 from picklebot.utils.def_loader import DefNotFoundError
@@ -95,7 +94,8 @@ def create_subagent_dispatch_tool(
             raise ValueError(f"Agent '{agent_id}' not found")
 
         agent = Agent(agent_def, shared_context)
-        agent_session = agent.new_session(Source.agent(current_agent_id))
+        agent_source = AgentEventSource(agent_id=current_agent_id)
+        agent_session = agent.new_session(agent_source)
         session_id = agent_session.session_id
 
         user_message = task

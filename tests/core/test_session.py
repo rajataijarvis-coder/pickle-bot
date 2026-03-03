@@ -1,9 +1,12 @@
 """Tests for AgentSession."""
 
+from picklebot.messagebus.telegram_bus import TelegramEventSource
+
 
 def test_session_add_message(test_agent):
     """Session should add message to in-memory list and persist to history."""
-    session = test_agent.new_session(source="telegram:user_123")
+    source = TelegramEventSource(user_id="user_123", chat_id="chat_456")
+    session = test_agent.new_session(source=source)
 
     session.add_message({"role": "user", "content": "Hello"})
 
@@ -18,7 +21,8 @@ def test_session_add_message(test_agent):
 
 def test_session_get_history_limits_messages(test_agent):
     """Session should limit history to max_messages."""
-    session = test_agent.new_session(source="telegram:user_123")
+    source = TelegramEventSource(user_id="user_123", chat_id="chat_456")
+    session = test_agent.new_session(source=source)
 
     # Add 5 messages
     for i in range(5):
@@ -32,7 +36,8 @@ def test_session_get_history_limits_messages(test_agent):
 
 def test_session_get_history_uses_max_history(test_agent):
     """Session should use max_history when max_messages not provided."""
-    session = test_agent.new_session(source="telegram:user_123")
+    source = TelegramEventSource(user_id="user_123", chat_id="chat_456")
+    session = test_agent.new_session(source=source)
     # get_source_settings returns 100 for telegram source
     # Add more messages than max_history
     for i in range(110):

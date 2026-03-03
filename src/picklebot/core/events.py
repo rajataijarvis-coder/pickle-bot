@@ -84,32 +84,6 @@ class CronEventSource(EventSource):
         return cls(cron_id=cron_id)
 
 
-class Source:
-    """Factory for creating typed event sources.
-
-    Source format: "<type>:<identifier>" or just "<type>" for system sources.
-
-    Examples:
-        Source.agent("pickle")       -> "agent:pickle"
-        Source.platform("telegram", "user_123") -> "telegram:user_123"
-    """
-
-    @staticmethod
-    def agent(agent_id: str) -> str:
-        """Create source for agent-generated events."""
-        return f"agent:{agent_id}"
-
-    @staticmethod
-    def platform(platform: str, user_id: str) -> str:
-        """Create source for platform-originated events."""
-        return f"{platform}:{user_id}"
-
-    @staticmethod
-    def cron(cron_id: str) -> str:
-        """Create source for cron-triggered events."""
-        return f"cron:{cron_id}"
-
-
 @dataclass
 class Event:
     """Base class for all typed events.

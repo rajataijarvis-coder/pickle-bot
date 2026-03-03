@@ -10,7 +10,6 @@ from picklebot.core.agent import Agent
 from picklebot.core.events import (
     AgentEventSource,
     Event,
-    Source,
     InboundEvent,
     OutboundEvent,
     DispatchEvent,

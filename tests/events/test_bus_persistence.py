@@ -3,7 +3,8 @@
 import asyncio
 import json
 import pytest
-from picklebot.core.events import Event, OutboundEvent, InboundEvent, Source
+from picklebot.core.events import Event, OutboundEvent, InboundEvent, AgentEventSource
+from picklebot.messagebus.telegram_bus import TelegramEventSource
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ async def test_persist_outbound_event(event_bus, events_dir):
         session_id="test-session",
         agent_id="pickle",
         content="Hello",
-        source=Source.agent("pickle"),
+        source=AgentEventSource(agent_id="pickle"),
         timestamp=12345.0,
     )
 
@@ -49,7 +50,7 @@ async def test_persist_skips_non_outbound(event_bus, events_dir):
         session_id="test-session",
         agent_id="test",
         content="Hi",
-        source=Source.platform("telegram", "user1"),
+        source=TelegramEventSource(user_id="user1", chat_id="chat1"),
         timestamp=12345.0,
     )
 
@@ -66,7 +67,7 @@ async def test_ack_deletes_persisted_event(event_bus, events_dir):
         session_id="test-session",
         agent_id="pickle",
         content="Hello",
-        source=Source.agent("pickle"),
+        source=AgentEventSource(agent_id="pickle"),
         timestamp=12345.0,
     )
     await event_bus._persist_outbound(event)
@@ -90,7 +91,7 @@ async def test_atomic_write(event_bus, events_dir):
         session_id="test-session",
         agent_id="pickle",
         content="Hello",
-        source=Source.agent("pickle"),
+        source=AgentEventSource(agent_id="pickle"),
         timestamp=12345.0,
     )
     await event_bus._persist_outbound(event)
@@ -121,7 +122,7 @@ async def test_publish_outbound_persists_and_notifies(event_bus, events_dir):
             session_id="test-session",
             agent_id="pickle",
             content="Hello",
-            source=Source.agent("pickle"),
+            source=AgentEventSource(agent_id="pickle"),
             timestamp=12345.0,
         )
         await event_bus.publish(event)
@@ -160,7 +161,7 @@ async def test_publish_inbound_no_persist_inbound(event_bus, events_dir):
             session_id="test-session",
             agent_id="test",
             content="Hi",
-            source=Source.platform("telegram", "user1"),
+            source=TelegramEventSource(user_id="user1", chat_id="chat1"),
             timestamp=12345.0,
         )
         await event_bus.publish(event)

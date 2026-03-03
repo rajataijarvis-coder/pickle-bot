@@ -3,7 +3,7 @@ import json
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from picklebot.core.history import HistoryMessage
 from picklebot.core.events import EventSource
@@ -26,23 +26,15 @@ if TYPE_CHECKING:
     from picklebot.provider.llm import LLMToolCall
 
 
-def get_source_settings(source: Union[EventSource, str]) -> tuple[int, bool]:
+def get_source_settings(source: EventSource) -> tuple[int, bool]:
     """Return (max_history, post_message) settings for a given source.
 
     Args:
-        source: EventSource object or string (e.g., CronEventSource or "cron:daily")
+        source: EventSource object (e.g., CronEventSource or TelegramEventSource)
 
     Returns:
         Tuple of (max_history, post_message_enabled)
     """
-    # Handle string sources - check for cron prefix directly for backwards compat
-    if isinstance(source, str):
-        # Old format check: "cron:xxx" or new format "cron:xxx"
-        if source.startswith("cron:"):
-            return (50, True)
-        return (100, False)
-
-    # EventSource object
     if source.is_cron:
         return (50, True)
     return (100, False)

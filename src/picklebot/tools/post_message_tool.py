@@ -3,7 +3,7 @@
 import time
 from typing import TYPE_CHECKING
 
-from picklebot.core.events import OutboundEvent, Source
+from picklebot.core.events import AgentEventSource, OutboundEvent
 from picklebot.tools.base import BaseTool, tool
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
             event = OutboundEvent(
                 session_id=session.session_id,
                 agent_id=session.agent_id,
-                source=Source.agent(session.agent_id),
+                source=AgentEventSource(agent_id=session.agent_id),
                 content=content,
                 timestamp=time.time(),
             )

@@ -10,8 +10,8 @@ from picklebot.core.events import (
     OutboundEvent,
     DispatchEvent,
     DispatchResultEvent,
-    Source,
     AgentEventSource,
+    CronEventSource,
     serialize_event,
     deserialize_event,
 )
@@ -278,17 +278,30 @@ class TestDispatchResultEvent:
         assert event.error == "Failed"
 
 
-class TestSource:
-    """Tests for Source factory methods."""
+class TestAgentEventSourceDirect:
+    """Tests for AgentEventSource construction."""
 
-    def test_source_agent(self):
-        assert Source.agent("pickle") == "agent:pickle"
+    def test_agent_event_source_creation(self):
+        source = AgentEventSource(agent_id="pickle")
+        assert source.agent_id == "pickle"
+        assert str(source) == "agent:pickle"
 
-    def test_source_platform(self):
-        assert Source.platform("telegram", "user_123") == "telegram:user_123"
+    def test_agent_event_source_from_string(self):
+        source = AgentEventSource.from_string("agent:pickle")
+        assert source.agent_id == "pickle"
 
-    def test_source_cron(self):
-        assert Source.cron("daily") == "cron:daily"
+
+class TestCronEventSourceDirect:
+    """Tests for CronEventSource construction."""
+
+    def test_cron_event_source_creation(self):
+        source = CronEventSource(cron_id="daily")
+        assert source.cron_id == "daily"
+        assert str(source) == "cron:daily"
+
+    def test_cron_event_source_from_string(self):
+        source = CronEventSource.from_string("cron:daily")
+        assert source.cron_id == "daily"
 
 
 class TestEventSourceSerialization:
