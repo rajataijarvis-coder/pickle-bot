@@ -8,7 +8,7 @@ def create_test_agent(
     agent_id: str = "test-agent",
     name: str = "Test Agent",
     description: str = "A test agent",
-    system_prompt: str = "You are a test assistant.",
+    agent_md: str = "You are a test assistant.",  # Renamed from system_prompt
     **kwargs,
 ) -> Path:
     """Create a minimal test agent in workspace.
@@ -18,7 +18,7 @@ def create_test_agent(
         agent_id: Agent identifier (folder name)
         name: Agent display name
         description: Agent description
-        system_prompt: Agent system prompt
+        agent_md: Agent markdown content (from AGENT.md body)
         **kwargs: Additional frontmatter fields (e.g., max_concurrency)
 
     Returns:
@@ -43,8 +43,8 @@ def create_test_agent(
 
     frontmatter = "\n".join(frontmatter_lines)
 
-    agent_md = agent_dir / "AGENT.md"
-    agent_md.write_text(f"---\n{frontmatter}\n---\n{system_prompt}\n")
+    agent_md_file = agent_dir / "AGENT.md"
+    agent_md_file.write_text(f"---\n{frontmatter}\n---\n{agent_md}\n")
 
     return agent_dir
 

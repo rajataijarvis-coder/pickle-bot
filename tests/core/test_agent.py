@@ -114,7 +114,7 @@ def _create_agent_with_skills(test_config, allow_skills: bool) -> Agent:
     agent_def = AgentDef(
         id="test-agent",
         name="Test Agent",
-        system_prompt="You are a test assistant.",
+        agent_md="You are a test assistant.",
         llm=LLMConfig(provider="openai", model="gpt-4", api_key="test-key"),
         allow_skills=allow_skills,
     )
@@ -190,7 +190,7 @@ def _create_agent_with_messagebus(test_config) -> Agent:
     agent_def = AgentDef(
         id="test-agent",
         name="Test Agent",
-        system_prompt="You are a test assistant.",
+        agent_md="You are a test assistant.",
         llm=LLMConfig(provider="openai", model="gpt-4", api_key="test-key"),
     )
     context = SharedContext(config=test_config)
@@ -252,7 +252,7 @@ class TestAgentNewSessionWithSource:
         agent_def = MagicMock()
         agent_def.id = "test-agent"
         agent_def.llm = LLMConfig(provider="openai", model="gpt-4", api_key="test-key")
-        agent_def.system_prompt = "You are a test agent."
+        agent_def.agent_md = "You are a test agent."
         agent_def.allow_skills = False
         agent_def.max_concurrency = 1
         return agent_def

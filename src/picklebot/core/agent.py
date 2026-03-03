@@ -260,7 +260,7 @@ class AgentSession:
             List of messages compatible with litellm
         """
         messages: list[Message] = [
-            {"role": "system", "content": self.agent.agent_def.system_prompt}
+            {"role": "system", "content": self.agent.agent_def.agent_md}
         ]
         messages.extend(self.get_history())
 
