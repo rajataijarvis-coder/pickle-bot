@@ -76,6 +76,16 @@ class MessageBusWorker(Worker):
                         await bus.reply(result, source)
                     return
 
+                # Set default delivery source only on first non-CLI platform message
+                if source.is_platform and source.platform_name != "cli":
+                    if not self.context.config.default_delivery_source:
+                        source_str_value = str(source)
+                        self.context.config.set_runtime(
+                            "default_delivery_source", source_str_value
+                        )
+                        # Update in-memory value immediately for other workers
+                        self.context.config.default_delivery_source = source_str_value
+
                 # Use str(source) for routing/session lookup
                 source_str = str(source)
                 agent_id = self.context.routing_table.resolve(source_str)
