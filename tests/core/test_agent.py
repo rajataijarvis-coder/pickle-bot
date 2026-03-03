@@ -87,7 +87,10 @@ def test_agent_new_session_with_custom_session_id(test_agent):
 @pytest.mark.parametrize(
     "source,expected_max_history",
     [
-        (TelegramEventSource(user_id="user_123", chat_id="chat_456"), 100),  # chat source -> 100
+        (
+            TelegramEventSource(user_id="user_123", chat_id="chat_456"),
+            100,
+        ),  # chat source -> 100
         (CronEventSource(cron_id="daily_job"), 50),  # cron source -> 50
     ],
 )
@@ -197,7 +200,10 @@ def _create_agent_with_messagebus(test_config) -> Agent:
 @pytest.mark.parametrize(
     "source,expected",
     [
-        (TelegramEventSource(user_id="user_123", chat_id="chat_456"), False),  # chat source -> no post_message
+        (
+            TelegramEventSource(user_id="user_123", chat_id="chat_456"),
+            False,
+        ),  # chat source -> no post_message
         (CronEventSource(cron_id="daily_job"), True),  # cron source -> post_message
     ],
 )
