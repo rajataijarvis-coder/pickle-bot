@@ -150,7 +150,7 @@ class DeliveryWorker(SubscriberWorker):
         if source.platform_name:
             return source
 
-        # Try default delivery source for agent/cron events
+        # Try default delivery source for agent events
         default_source_str = self.context.config.default_delivery_source
         if default_source_str:
             try:

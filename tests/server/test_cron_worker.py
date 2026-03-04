@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from picklebot.server.cron_worker import CronWorker, find_due_jobs
 from picklebot.core.cron_loader import CronDef
-from picklebot.core.events import InboundEvent
+from picklebot.core.events import DispatchEvent
 
 
 def test_find_due_jobs_returns_matching():
@@ -51,16 +51,16 @@ def test_find_due_jobs_empty_when_no_match():
 
 @pytest.mark.anyio
 async def test_cron_worker_dispatches_due_job(test_context, test_agent_def):
-    """CronWorker dispatches due jobs via EventBus as INBOUND events."""
+    """CronWorker dispatches due jobs via EventBus as Dispatch events."""
     worker = CronWorker(test_context)
 
     # Track published events
-    published_events: list[InboundEvent] = []
+    published_events: list[DispatchEvent] = []
 
-    async def capture_event(event: InboundEvent) -> None:
+    async def capture_event(event: DispatchEvent) -> None:
         published_events.append(event)
 
-    test_context.eventbus.subscribe(InboundEvent, capture_event)
+    test_context.eventbus.subscribe(DispatchEvent, capture_event)
 
     # Start EventBus worker to process queued events
     eventbus_task = test_context.eventbus.start()
@@ -92,13 +92,11 @@ async def test_cron_worker_dispatches_due_job(test_context, test_agent_def):
         # Wait for EventBus to process the queued event
         await asyncio.sleep(0.1)
 
-        # Verify event was published as InboundEvent
+        # Verify event was published as DispatchEvent
         assert len(published_events) == 1
         event = published_events[0]
-        assert isinstance(event, InboundEvent)
+        assert isinstance(event, DispatchEvent)
         assert event.content == "Test prompt from cron"
-        # InboundEvent has agent_id directly (not in metadata)
-        assert isinstance(event, InboundEvent)
         assert event.agent_id == "test-agent"
     finally:
         eventbus_task.cancel()

@@ -13,9 +13,13 @@ from picklebot.utils.config import LLMConfig
 @pytest.fixture
 def prompt_builder(tmp_path):
     """Create a PromptBuilder with temp workspace."""
-    mock_cron_loader = MagicMock()
-    mock_cron_loader.discover_crons.return_value = []
-    return PromptBuilder(workspace_path=tmp_path, cron_loader=mock_cron_loader)
+    mock_config = MagicMock()
+    mock_config.workspace = tmp_path
+    mock_context = MagicMock()
+    mock_context.config = mock_config
+    mock_context.cron_loader = MagicMock()
+    mock_context.cron_loader.discover_crons.return_value = []
+    return PromptBuilder(context=mock_context)
 
 
 @pytest.fixture
@@ -124,7 +128,7 @@ class TestPromptBuilderChannel:
 
         prompt = prompt_builder.build(session)
 
-        assert "You are responding via cron" in prompt
+        assert "You are running as a background cron job" in prompt
 
 
 class TestPromptBuilderBootstrap:
@@ -173,7 +177,13 @@ class TestPromptBuilderBootstrap:
         mock_cron_loader = MagicMock()
         mock_cron_loader.discover_crons.return_value = [mock_cron]
 
-        builder = PromptBuilder(workspace_path=tmp_path, cron_loader=mock_cron_loader)
+        mock_config = MagicMock()
+        mock_config.workspace = tmp_path
+        mock_context = MagicMock()
+        mock_context.config = mock_config
+        mock_context.cron_loader = mock_cron_loader
+
+        builder = PromptBuilder(context=mock_context)
 
         source = TelegramEventSource(user_id="123", chat_id="456")
         session = MagicMock()
@@ -202,4 +212,4 @@ class TestPromptBuilderIntegration:
         from picklebot.core.context import SharedContext
 
         context = SharedContext(config=test_config)
-        assert context.prompt_builder.workspace_path == tmp_path
+        assert context.prompt_builder.context.config.workspace == tmp_path

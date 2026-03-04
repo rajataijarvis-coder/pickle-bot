@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import shutil
-import time
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -11,7 +10,7 @@ from croniter import croniter
 
 from .worker import Worker
 from picklebot.core.agent import Agent
-from picklebot.core.events import CronEventSource, InboundEvent
+from picklebot.core.events import CronEventSource, DispatchEvent
 
 if TYPE_CHECKING:
     from picklebot.core.cron_loader import CronDef
@@ -77,19 +76,16 @@ class CronWorker(Worker):
         due_jobs = find_due_jobs(jobs)
 
         for cron_def in due_jobs:
-            # Create session for this cron job
             agent_def = self.context.agent_loader.load(cron_def.agent)
             agent = Agent(agent_def, self.context)
             cron_source = CronEventSource(cron_id=cron_def.id)
             session = agent.new_session(cron_source)
 
-            # Publish INBOUND event (external work entering the system)
-            event = InboundEvent(
+            event = DispatchEvent(
                 session_id=session.session_id,
                 agent_id=cron_def.agent,
                 source=CronEventSource(cron_id=cron_def.id),
                 content=cron_def.prompt,
-                timestamp=time.time(),
             )
             await self.context.eventbus.publish(event)
             self.logger.info(f"Dispatched cron job: {cron_def.id}")

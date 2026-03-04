@@ -1,11 +1,12 @@
 """Prompt builder that assembles system prompt from layers."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+
 if TYPE_CHECKING:
-    from picklebot.core.cron_loader import CronLoader
+    from picklebot.core.agent import AgentSession
+    from picklebot.core.context import SharedContext
     from picklebot.core.events import EventSource
 
 
@@ -20,11 +21,10 @@ class PromptBuilder:
     5. Channel - Platform name hint
     """
 
-    def __init__(self, workspace_path: Path, cron_loader: "CronLoader"):
-        self.workspace_path = workspace_path
-        self.cron_loader = cron_loader
+    def __init__(self, context: "SharedContext"):
+        self.context = context
 
-    def build(self, session) -> str:
+    def build(self, session: "AgentSession") -> str:
         """Build the full system prompt from layers.
 
         Args:
@@ -65,12 +65,12 @@ class PromptBuilder:
         parts = []
 
         # BOOTSTRAP.md
-        bootstrap_path = self.workspace_path / "BOOTSTRAP.md"
+        bootstrap_path = self.context.config.workspace / "BOOTSTRAP.md"
         if bootstrap_path.exists():
             parts.append(bootstrap_path.read_text().strip())
 
         # AGENTS.md
-        agents_path = self.workspace_path / "AGENTS.md"
+        agents_path = self.context.config.workspace / "AGENTS.md"
         if agents_path.exists():
             parts.append(agents_path.read_text().strip())
 
@@ -83,7 +83,7 @@ class PromptBuilder:
 
     def _format_cron_list(self) -> str:
         """Format crons as markdown list."""
-        crons = self.cron_loader.discover_crons()
+        crons = self.context.cron_loader.discover_crons()
         if not crons:
             return ""
 
@@ -99,7 +99,10 @@ class PromptBuilder:
     def _build_channel_hint(self, source: "EventSource") -> str:
         """Build platform hint."""
         if source.is_cron:
-            platform = "cron"
+            return "You are running as a background cron job. Your response will not be sent to user directly."
+        if source.is_agent:
+            return "You are running as a dispatched subagent. Your response will be sent to main agent."
+        elif source.is_platform:
+            return f"You are responding via {source.platform_name}."
         else:
-            platform = source.platform_name or "unknown"
-        return f"You are responding via {platform}."
+            raise ValueError(f"Unknown source type: {source}")

@@ -44,4 +44,4 @@ class SharedContext:
 
         self.eventbus = EventBus(self)
         self.routing_table = RoutingTable(self)
-        self.prompt_builder = PromptBuilder(config.workspace, self.cron_loader)
+        self.prompt_builder = PromptBuilder(self)
