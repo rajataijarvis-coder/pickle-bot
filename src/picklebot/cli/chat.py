@@ -2,17 +2,26 @@
 
 import asyncio
 import logging
+import warnings
 
-import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
+# Suppress all warnings at module level (e.g., RequestsDependencyWarning)
+warnings.filterwarnings("ignore")
 
-from picklebot.core.context import SharedContext
-from picklebot.messagebus.cli_bus import CliBus
-from picklebot.server import AgentWorker, DeliveryWorker, MessageBusWorker, Worker
-from picklebot.utils.config import Config
-from picklebot.utils.logging import setup_logging
+import typer  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.panel import Panel  # noqa: E402
+from rich.text import Text  # noqa: E402
+
+from picklebot.core.context import SharedContext  # noqa: E402
+from picklebot.messagebus.cli_bus import CliBus  # noqa: E402
+from picklebot.server import (  # noqa: E402
+    AgentWorker,
+    DeliveryWorker,
+    MessageBusWorker,
+    Worker,
+)
+from picklebot.utils.config import Config  # noqa: E402
+from picklebot.utils.logging import setup_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

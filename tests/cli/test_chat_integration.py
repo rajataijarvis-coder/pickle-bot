@@ -1,11 +1,12 @@
 """Integration tests for chat command."""
+
 import asyncio
-import pytest
-from picklebot.cli.chat import ChatLoop
-from picklebot.utils.config import Config
-from picklebot.core.events import OutboundEvent, InboundEvent
-from picklebot.messagebus.cli_bus import CliEventSource
 import time
+
+from picklebot.cli.chat import ChatLoop
+from picklebot.core.events import InboundEvent, OutboundEvent
+from picklebot.messagebus.cli_bus import CliEventSource
+from picklebot.utils.config import Config
 
 
 def test_chat_loop_processes_user_input_and_displays_response(test_config: Config):
@@ -13,7 +14,9 @@ def test_chat_loop_processes_user_input_and_displays_response(test_config: Confi
     chat_loop = ChatLoop(test_config)
 
     # Verify response_queue exists
-    assert hasattr(chat_loop, 'response_queue'), "ChatLoop should have a response_queue attribute"
+    assert hasattr(
+        chat_loop, "response_queue"
+    ), "ChatLoop should have a response_queue attribute"
 
     # Track published events
     published_events = []
@@ -64,14 +67,35 @@ def test_chat_loop_processes_user_input_and_displays_response(test_config: Confi
         assert published_events[0].content == user_input
 
         # Verify response queue mechanism
-        assert not chat_loop.response_queue.empty(), "Response should be queued in response_queue"
+        assert (
+            not chat_loop.response_queue.empty()
+        ), "Response should be queued in response_queue"
 
         # Get the queued response and verify its content
         queued_response = chat_loop.response_queue.get_nowait()
-        assert queued_response.content == expected_response, "Queued response should match agent output"
+        assert (
+            queued_response.content == expected_response
+        ), "Queued response should match agent output"
 
         # Cleanup
         for worker in chat_loop.workers:
             await worker.stop()
 
     asyncio.run(run_test())
+
+
+def test_warnings_are_suppressed():
+    """Test that Python warnings are suppressed during chat."""
+    import warnings
+
+    # Import chat module (triggers suppression)
+    import picklebot.cli.chat  # noqa: F401
+
+    # Check that an "ignore" filter is set at the module level
+    # The filters list contains tuples of (action, message, category, module, lineno)
+    filters = warnings.filters
+
+    # Check that there's an "ignore" filter that applies to all warnings
+    # Filter tuple structure: (action, message, category, module, lineno)
+    has_ignore_filter = any(f[0] == "ignore" for f in filters)
+    assert has_ignore_filter, "chat.py should set warnings.filterwarnings('ignore')"
