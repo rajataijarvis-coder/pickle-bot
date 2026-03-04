@@ -3,6 +3,8 @@
 import asyncio
 import time
 
+import pytest
+
 from picklebot.cli.chat import ChatLoop
 from picklebot.core.events import InboundEvent, OutboundEvent
 from picklebot.messagebus.cli_bus import CliEventSource
@@ -113,3 +115,14 @@ def test_warnings_are_suppressed():
     # Filter tuple structure: (action, message, category, module, lineno)
     has_ignore_filter = any(f[0] == "ignore" for f in filters)
     assert has_ignore_filter, "chat.py should set warnings.filterwarnings('ignore')"
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_subscribes_to_outbound_events(test_config: Config):
+    """Test that ChatLoop subscribes to OutboundEvents."""
+    chat_loop = ChatLoop(test_config)
+
+    # Check subscription exists
+    subscribers = chat_loop.context.eventbus._subscribers.get(OutboundEvent, [])
+    assert len(subscribers) > 0
+    assert chat_loop.handle_outbound_event in subscribers

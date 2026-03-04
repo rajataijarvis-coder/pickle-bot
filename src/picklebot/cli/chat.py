@@ -43,6 +43,14 @@ class ChatLoop:
         # Response queue for collecting agent responses
         self.response_queue: asyncio.Queue[OutboundEvent] = asyncio.Queue()
 
+        # Subscribe to outbound events
+        self.context.eventbus.subscribe(OutboundEvent, self.handle_outbound_event)
+
+    async def handle_outbound_event(self, event: OutboundEvent) -> None:
+        """Handle outbound events by adding to response queue."""
+        await self.response_queue.put(event)
+        self.context.eventbus.ack(event)
+
     async def run(self) -> None:
         """Run the interactive chat loop."""
         # Display welcome message
