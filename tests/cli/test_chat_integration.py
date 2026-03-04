@@ -56,6 +56,8 @@ def test_chat_loop_processes_user_input_and_displays_response(test_config: Confi
         # Simulate agent response
         outbound = OutboundEvent(
             session_id="test-session",
+            agent_id="default",
+            source=CliEventSource(),
             content=expected_response,
             timestamp=time.time(),
         )
@@ -166,3 +168,30 @@ def test_display_agent_response_prints_styled_output(test_config: Config):
 
     # Check that output contains the response
     assert "Hello! How can I help you?" in output
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_handles_quit_command(test_config: Config):
+    """Test that chat loop exits on quit command."""
+    import io
+    import sys
+
+    chat_loop = ChatLoop(test_config)
+
+    # Mock input to return 'quit'
+    sys.stdin = io.StringIO("quit\n")
+
+    # Start workers
+    for worker in chat_loop.workers:
+        worker.start()
+
+    # Run chat loop (should exit quickly)
+    try:
+        await asyncio.wait_for(chat_loop.run(), timeout=1.0)
+    except asyncio.TimeoutError:
+        # If it times out, quit didn't work
+        assert False, "Chat loop didn't exit on quit command"
+    finally:
+        sys.stdin = sys.__stdin__
+        for worker in chat_loop.workers:
+            await worker.stop()

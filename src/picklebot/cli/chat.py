@@ -15,6 +15,7 @@ from rich.text import Text  # noqa: E402
 
 from picklebot.core.events import OutboundEvent  # noqa: E402
 from picklebot.core.context import SharedContext  # noqa: E402
+from picklebot.messagebus.cli_bus import CliEventSource  # noqa: E402
 from picklebot.server import (  # noqa: E402
     AgentWorker,
     Worker,
@@ -97,19 +98,57 @@ class ChatLoop:
         )
         self.console.print("Type 'quit' or 'exit' to end the session.\n")
 
-        # Start all workers
+        # Start workers
         for worker in self.workers:
             worker.start()
 
         try:
-            # Wait forever - workers handle everything
-            await asyncio.Future()
-        except asyncio.CancelledError:
+            while True:
+                # Get user input
+                user_input = await asyncio.to_thread(self.get_user_input)
+
+                # Check for quit commands
+                if user_input.lower() in ("quit", "exit", "q"):
+                    self.console.print("\nGoodbye!")
+                    break
+
+                # Skip empty input
+                if not user_input:
+                    continue
+
+                # Publish InboundEvent
+                from picklebot.core.events import InboundEvent
+                import time
+
+                # Get or create session (simplified for CLI)
+                session_id = "cli-session"
+
+                event = InboundEvent(
+                    session_id=session_id,
+                    agent_id="default",
+                    source=CliEventSource(),
+                    content=user_input,
+                    timestamp=time.time(),
+                )
+                await self.context.eventbus.publish(event)
+
+                # Wait for agent response
+                try:
+                    response = await asyncio.wait_for(
+                        self.response_queue.get(), timeout=30.0
+                    )
+                    # Display response
+                    self.display_agent_response(response.content)
+                except asyncio.TimeoutError:
+                    self.console.print("[red]Agent response timed out[/red]")
+                    self.console.print()
+
+        except (KeyboardInterrupt, EOFError):
             self.console.print("\nGoodbye!")
+        finally:
             # Stop all workers gracefully
             for worker in self.workers:
                 await worker.stop()
-            raise
 
 
 def chat_command(ctx: typer.Context) -> None:
