@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore")
 import typer  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.panel import Panel  # noqa: E402
+from rich.prompt import Prompt  # noqa: E402
 from rich.text import Text  # noqa: E402
 
 from picklebot.core.events import OutboundEvent  # noqa: E402
@@ -50,6 +51,23 @@ class ChatLoop:
         """Handle outbound events by adding to response queue."""
         await self.response_queue.put(event)
         self.context.eventbus.ack(event)
+
+    def get_user_input(self) -> str:
+        """Get user input with styled prompt.
+
+        Returns:
+            Trimmed user input, or empty string if quit command
+        """
+        # Create cyan prompt
+        prompt_text = Text("You: ", style="cyan")
+
+        # Get input (Prompt.get_input handles the styling)
+        user_input = Prompt.ask(prompt_text, console=self.console)
+
+        # Trim whitespace
+        user_input = user_input.strip()
+
+        return user_input
 
     async def run(self) -> None:
         """Run the interactive chat loop."""

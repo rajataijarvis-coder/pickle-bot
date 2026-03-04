@@ -126,3 +126,22 @@ async def test_chat_loop_subscribes_to_outbound_events(test_config: Config):
     subscribers = chat_loop.context.eventbus._subscribers.get(OutboundEvent, [])
     assert len(subscribers) > 0
     assert chat_loop.handle_outbound_event in subscribers
+
+
+def test_get_user_input_returns_trimmed_input(test_config: Config):
+    """Test that get_user_input returns trimmed user input."""
+    import io
+    import sys
+
+    chat_loop = ChatLoop(test_config)
+
+    # Mock stdin with input that has leading/trailing whitespace
+    test_input = "  Hello, agent!  \n"
+    sys.stdin = io.StringIO(test_input)
+
+    result = chat_loop.get_user_input()
+
+    assert result == "Hello, agent!"
+
+    # Restore stdin
+    sys.stdin = sys.__stdin__
