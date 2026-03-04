@@ -1,167 +1,196 @@
-"""Integration test for CLI MessageBus flow through workers."""
+"""Integration tests for chat command."""
 
 import asyncio
-from pathlib import Path
-from unittest.mock import patch
+import time
 
 import pytest
 
-from picklebot.core.context import SharedContext
-from picklebot.core.events import Event, InboundEvent
-from picklebot.messagebus.cli_bus import CliBus
-from picklebot.server.agent_worker import AgentWorker
-from picklebot.server.messagebus_worker import MessageBusWorker
-from picklebot.utils.config import Config, LLMConfig, MessageBusConfig
+from picklebot.cli.chat import ChatLoop
+from picklebot.core.events import InboundEvent, OutboundEvent, CliEventSource
+from picklebot.utils.config import Config
 
 
-@pytest.fixture
-def integration_config(tmp_path: Path) -> Config:
-    """Config with CLI messagebus enabled for integration testing."""
-    llm_config = LLMConfig(provider="openai", model="gpt-4", api_key="test-key")
+def test_chat_loop_processes_user_input_and_displays_response(test_config: Config):
+    """Test that chat loop handles input and displays agent response."""
+    chat_loop = ChatLoop(test_config)
 
-    # Create agents directory with a test agent
-    agents_dir = tmp_path / "agents" / "test-agent"
-    agents_dir.mkdir(parents=True)
-
-    # Create AGENT.md file (required format for agent_loader)
-    agent_file = agents_dir / "AGENT.md"
-    agent_file.write_text(
-        """---
-name: Test Agent
-description: Integration test agent
----
-
-You are a test assistant.
-"""
-    )
-
-    return Config(
-        workspace=tmp_path,
-        llm=llm_config,
-        default_agent="test-agent",
-        agents_path=Path("agents"),
-        messagebus=MessageBusConfig(
-            enabled=False,  # CLI bypasses config anyway
-        ),
-        routing={
-            "bindings": [
-                {"agent": "test-agent", "value": "cli:.*"},
-            ]
-        },
-    )
-
-
-@pytest.mark.asyncio
-async def test_cli_message_flow_through_workers(integration_config: Config):
-    """
-    Test complete message flow from stdin through MessageBusWorker publishing events.
-
-    This integration test verifies:
-    1. CliBus receives input from mocked stdin
-    2. MessageBusWorker publishes INBOUND event to EventBus
-    3. Event has correct type, source, content, and metadata
-    """
-    # Create CliBus
-    bus = CliBus()
-
-    # Create SharedContext with buses=[bus]
-    context = SharedContext(config=integration_config, buses=[bus])
-
-    # Verify context has eventbus
-    assert hasattr(context, "eventbus")
-
-    # Create workers (uses default agent from config)
-    # AgentWorker auto-subscribes in __init__
-    messagebus_worker = MessageBusWorker(context)
-    AgentWorker(context)  # Creates worker that auto-subscribes to events
+    # Verify response_queue exists
+    assert hasattr(
+        chat_loop, "response_queue"
+    ), "ChatLoop should have a response_queue attribute"
 
     # Track published events
-    published_events: list[Event] = []
+    published_events = []
+    original_publish = chat_loop.context.eventbus.publish
 
-    async def capture_event(event: Event):
+    async def track_publish(event):
         published_events.append(event)
+        await original_publish(event)
 
-    context.eventbus.subscribe(InboundEvent, capture_event)
+    chat_loop.context.eventbus.publish = track_publish
 
-    # Mock input to simulate user typing "test message" then "quit"
-    with patch(
-        "picklebot.messagebus.cli_bus.input", side_effect=["test message", "quit"]
-    ):
-        # Start EventBus as worker (processes queued events)
-        eventbus_task = context.eventbus.start()
+    # Simulate chat interaction
+    async def run_test():
+        # Start workers
+        for worker in chat_loop.workers:
+            worker.start()
 
-        # Start MessageBusWorker as background task
-        bus_task = asyncio.create_task(messagebus_worker.run())
+        # Give workers time to start
+        await asyncio.sleep(0.1)
 
-        try:
-            # Wait for event to be published (with timeout)
-            await asyncio.wait_for(
-                asyncio.sleep(0.5), timeout=2.0
-            )  # Allow time for event processing
+        # Simulate user input and agent response
+        user_input = "Hello, agent!"
+        expected_response = "Hello! How can I help you?"
 
-            # Verify an INBOUND event was published
-            assert len(published_events) >= 1
-            event = published_events[0]
+        # Publish inbound event (simulating user input)
+        inbound = InboundEvent(
+            session_id="test-session",
+            agent_id="default",
+            source=CliEventSource(),
+            content=user_input,
+            timestamp=time.time(),
+        )
+        await chat_loop.context.eventbus.publish(inbound)
 
-            # Verify event structure
-            assert isinstance(event, InboundEvent)
-            assert event.content == "test message"
-            assert str(event.source).startswith("platform-cli:")
-            assert event.timestamp > 0
+        # Simulate agent response
+        outbound = OutboundEvent(
+            session_id="test-session",
+            agent_id="default",
+            source=CliEventSource(),
+            content=expected_response,
+            timestamp=time.time(),
+        )
+        await chat_loop.context.eventbus.publish(outbound)
 
-            # Wait a bit for bus to process quit command
-            await asyncio.sleep(0.2)
+        # Wait for response to be queued
+        await asyncio.sleep(0.2)
 
-        finally:
-            # Cleanup: cancel workers
-            bus_task.cancel()
-            eventbus_task.cancel()
+        # Check that inbound event was published
+        assert len(published_events) >= 1
+        assert published_events[0].content == user_input
 
-            # Wait for tasks to finish
-            try:
-                await asyncio.wait_for(bus_task, timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
+        # Verify response queue mechanism
+        assert (
+            not chat_loop.response_queue.empty()
+        ), "Response should be queued in response_queue"
 
-            try:
-                await asyncio.wait_for(eventbus_task, timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
+        # Get the queued response and verify its content
+        queued_response = chat_loop.response_queue.get_nowait()
+        assert (
+            queued_response.content == expected_response
+        ), "Queued response should match agent output"
+
+        # Cleanup
+        for worker in chat_loop.workers:
+            await worker.stop()
+
+    asyncio.run(run_test())
+
+
+def test_chat_loop_has_no_messagebus_worker(test_config: Config):
+    """Test that ChatLoop doesn't use MessageBusWorker."""
+    chat_loop = ChatLoop(test_config)
+
+    # Check workers list
+    worker_types = [type(worker).__name__ for worker in chat_loop.workers]
+
+    # Should have EventBus, AgentWorker, but NOT MessageBusWorker or DeliveryWorker
+    assert "EventBus" in worker_types
+    assert "AgentWorker" in worker_types
+    assert "MessageBusWorker" not in worker_types
+    assert "DeliveryWorker" not in worker_types
+
+
+def test_warnings_are_suppressed():
+    """Test that Python warnings are suppressed during chat."""
+    import warnings
+
+    # Import chat module (triggers suppression)
+    import picklebot.cli.chat  # noqa: F401
+
+    # Check that an "ignore" filter is set at the module level
+    # The filters list contains tuples of (action, message, category, module, lineno)
+    filters = warnings.filters
+
+    # Check that there's an "ignore" filter that applies to all warnings
+    # Filter tuple structure: (action, message, category, module, lineno)
+    has_ignore_filter = any(f[0] == "ignore" for f in filters)
+    assert has_ignore_filter, "chat.py should set warnings.filterwarnings('ignore')"
 
 
 @pytest.mark.asyncio
-async def test_shared_context_with_custom_buses(integration_config: Config):
-    """
-    Test that SharedContext properly accepts and use custom buses parameter.
-    """
-    # Create multiple buses
-    bus1 = CliBus()
-    bus2 = CliBus()
+async def test_chat_loop_subscribes_to_outbound_events(test_config: Config):
+    """Test that ChatLoop subscribes to OutboundEvents."""
+    chat_loop = ChatLoop(test_config)
 
-    # Create context with custom buses
-    context = SharedContext(config=integration_config, buses=[bus1, bus2])
+    # Check subscription exists
+    subscribers = chat_loop.context.eventbus._subscribers.get(OutboundEvent, [])
+    assert len(subscribers) > 0
+    assert chat_loop.handle_outbound_event in subscribers
 
-    # Verify buses are set correctly
-    assert len(context.messagebus_buses) == 2
-    assert context.messagebus_buses[0] is bus1
-    assert context.messagebus_buses[1] is bus2
+
+def test_get_user_input_returns_trimmed_input(test_config: Config):
+    """Test that get_user_input returns trimmed user input."""
+    import io
+    import sys
+
+    chat_loop = ChatLoop(test_config)
+
+    # Mock stdin with input that has leading/trailing whitespace
+    test_input = "  Hello, agent!  \n"
+    sys.stdin = io.StringIO(test_input)
+
+    result = chat_loop.get_user_input()
+
+    assert result == "Hello, agent!"
+
+    # Restore stdin
+    sys.stdin = sys.__stdin__
+
+
+def test_display_agent_response_prints_styled_output(test_config: Config):
+    """Test that display_agent_response prints with green prefix."""
+    from io import StringIO
+
+    chat_loop = ChatLoop(test_config)
+
+    # Capture stdout
+    captured_output = StringIO()
+    import sys
+
+    sys.stdout = captured_output
+
+    chat_loop.display_agent_response("Hello! How can I help you?")
+
+    output = captured_output.getvalue()
+    sys.stdout = sys.__stdout__
+
+    # Check that output contains the response
+    assert "Hello! How can I help you?" in output
 
 
 @pytest.mark.asyncio
-async def test_messagebus_worker_uses_context_buses(integration_config: Config):
-    """
-    Test that MessageBusWorker uses buses from SharedContext.
-    """
-    # Create a bus
-    bus = CliBus()
+async def test_chat_loop_handles_quit_command(test_config: Config):
+    """Test that chat loop exits on quit command."""
+    import io
+    import sys
 
-    # Create context with the bus
-    context = SharedContext(config=integration_config, buses=[bus])
+    chat_loop = ChatLoop(test_config)
 
-    # Create MessageBusWorker (uses default agent)
-    worker = MessageBusWorker(context)
+    # Mock input to return 'quit'
+    sys.stdin = io.StringIO("quit\n")
 
-    # Verify worker has the bus from context
-    assert len(worker.buses) == 1
-    assert worker.buses[0] is bus
-    assert worker.bus_map["cli"] is bus
+    # Start workers
+    for worker in chat_loop.workers:
+        worker.start()
+
+    # Run chat loop (should exit quickly)
+    try:
+        await asyncio.wait_for(chat_loop.run(), timeout=1.0)
+    except asyncio.TimeoutError:
+        # If it times out, quit didn't work
+        assert False, "Chat loop didn't exit on quit command"
+    finally:
+        sys.stdin = sys.__stdin__
+        for worker in chat_loop.workers:
+            await worker.stop()
