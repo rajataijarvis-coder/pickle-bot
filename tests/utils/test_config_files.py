@@ -63,7 +63,7 @@ class TestConfigSetters:
 
     def test_set_user_preserves_existing(self, tmp_path):
         """set_user preserves other fields in config.user.yaml."""
-        _create_user_config(tmp_path, chat_max_history=100)
+        _create_user_config(tmp_path, other_field="preserved")
 
         config = Config.load(tmp_path)
         config.set_user("default_agent", "my-agent")
@@ -72,7 +72,7 @@ class TestConfigSetters:
         user_config = tmp_path / "config.user.yaml"
         data = yaml.safe_load(user_config.read_text())
         assert data["default_agent"] == "my-agent"
-        assert data["chat_max_history"] == 100
+        assert data["other_field"] == "preserved"
 
     def test_set_user_updates_in_memory(self, tmp_path):
         """set_user updates the in-memory config object via reload."""

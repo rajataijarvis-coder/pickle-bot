@@ -109,8 +109,6 @@ class Config(BaseModel):
     api: ApiConfig | None = None
     websearch: BraveWebSearchConfig | None = None
     webread: Crawl4AIWebReadConfig | None = None
-    chat_max_history: int = Field(default=50, gt=0)
-    job_max_history: int = Field(default=500, gt=0)
     routing: dict = Field(default_factory=lambda: {"bindings": []})
     sources: dict[str, dict] = Field(default_factory=dict)
     default_delivery_source: str | None = None

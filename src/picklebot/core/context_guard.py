@@ -1,10 +1,10 @@
 """Context guard for proactive context window management."""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from litellm import token_counter
-from litellm.types.completion import ChatCompletionMessageParam as Message
+from litellm.types.completion import ChatCompletionMessageParam as Message, ChatCompletionAssistantMessageParam
 
 if TYPE_CHECKING:
     from picklebot.core.agent import AgentSession
@@ -49,7 +49,7 @@ class ContextGuard:
             if role == "assistant" and msg.get("tool_calls"):
                 tool_names = [
                     tc.get("function", {}).get("name", "unknown")
-                    for tc in msg["tool_calls"]
+                    for tc in (cast(ChatCompletionAssistantMessageParam ,msg)).get("tool_calls", [])
                 ]
                 lines.append(
                     f"ASSISTANT: [used tools: {', '.join(tool_names)}] {content}"
@@ -76,16 +76,22 @@ class ContextGuard:
         compress_count = max(2, int(len(original_messages) * 0.5))
         compress_count = min(compress_count, len(original_messages) - keep_count)
 
-        return [
+        messages: list[Message] = []
+        messages.append(
             {
                 "role": "user",
                 "content": f"[Previous conversation summary]\n{summary}",
-            },
+            }
+        )
+        messages.append(
             {
                 "role": "assistant",
                 "content": "Understood, I have the context.",
-            },
-        ] + original_messages[compress_count:]
+            }
+        )
+        messages.extend(original_messages[compress_count:])
+        return messages
+
 
     async def check_and_compact(
         self,

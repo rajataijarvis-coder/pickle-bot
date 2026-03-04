@@ -163,8 +163,6 @@ class TestAgentNewSessionWithSource:
         from picklebot.core.history import HistoryStore
 
         context = MagicMock()
-        context.config.chat_max_history = 100
-        context.config.job_max_history = 50
         context.config.messagebus = MagicMock()
         context.config.messagebus.enabled = True
         context.config.messagebus.telegram = MagicMock()

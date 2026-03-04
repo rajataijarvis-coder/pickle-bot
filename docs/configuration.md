@@ -82,11 +82,6 @@ memories_path: memories
 history_path: .history
 logging_path: .logs
 
-# History limits
-chat_max_history: 50               # Max messages for LLM context in chat mode
-job_max_history: 500               # Max messages for LLM context in job mode (crons)
-max_history_file_size: 500         # Max messages per history chunk file
-
 # HTTP API (omit section to disable)
 api:
   host: "127.0.0.1"

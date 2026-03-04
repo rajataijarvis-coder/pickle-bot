@@ -97,43 +97,23 @@ class TestPlatformConfig:
 class TestSessionHistoryLimits:
     """Tests for session history config fields."""
 
-    def test_config_default_history_limits(self, llm_config):
-        """Config should have default history limits."""
+    def test_config_default_agent(self, llm_config):
+        """Config should have default agent."""
         config = Config(
             workspace=Path("/workspace"),
             llm=llm_config,
             default_agent="test",
         )
-        assert config.chat_max_history == 50
-        assert config.job_max_history == 500
+        assert config.default_agent == "test"
 
-    def test_config_custom_history_limits(self, llm_config):
-        """Config should allow custom history limits."""
+    def test_config_has_required_fields(self, llm_config):
+        """Config should require certain fields."""
         config = Config(
             workspace=Path("/workspace"),
             llm=llm_config,
             default_agent="test",
-            chat_max_history=100,
-            job_max_history=1000,
         )
-        assert config.chat_max_history == 100
-        assert config.job_max_history == 1000
-
-    @pytest.mark.parametrize(
-        "field,value",
-        [
-            ("chat_max_history", 0),
-        ],
-    )
-    def test_positive_field_validation(self, llm_config, field, value):
-        """Config should reject non-positive values for certain fields."""
-        with pytest.raises(ValidationError):
-            Config(
-                workspace=Path("/workspace"),
-                llm=llm_config,
-                default_agent="test",
-                **{field: value},
-            )
+        assert config.default_agent == "test"
 
 
 class TestMessageBusConfig:

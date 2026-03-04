@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from picklebot.utils.def_loader import get_template_variables, substitute_template
+
 
 if TYPE_CHECKING:
     from picklebot.core.agent import AgentSession
@@ -64,15 +66,17 @@ class PromptBuilder:
         """Load BOOTSTRAP.md + AGENTS.md + cron list."""
         parts = []
 
-        # BOOTSTRAP.md
         bootstrap_path = self.context.config.workspace / "BOOTSTRAP.md"
-        if bootstrap_path.exists():
-            parts.append(bootstrap_path.read_text().strip())
+        bootstrap_md = substitute_template(
+            bootstrap_path.read_text().strip(), 
+            get_template_variables(self.context.config))
+        parts.append(bootstrap_md)
 
-        # AGENTS.md
         agents_path = self.context.config.workspace / "AGENTS.md"
-        if agents_path.exists():
-            parts.append(agents_path.read_text().strip())
+        agents_md = substitute_template(
+            agents_path.read_text().strip(), 
+            get_template_variables(self.context.config))
+        parts.append(agents_md)
 
         # Dynamic cron list
         cron_list = self._format_cron_list()

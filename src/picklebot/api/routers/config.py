@@ -14,8 +14,6 @@ class ConfigResponse(BaseModel):
     """Response model for config (excludes sensitive fields)."""
 
     default_agent: str
-    chat_max_history: int
-    job_max_history: int
 
 
 @router.get("", response_model=ConfigResponse)
@@ -23,8 +21,6 @@ def get_config(ctx: SharedContext = Depends(get_context)) -> dict:
     """Get current config."""
     return {
         "default_agent": ctx.config.default_agent,
-        "chat_max_history": ctx.config.chat_max_history,
-        "job_max_history": ctx.config.job_max_history,
     }
 
 
@@ -35,16 +31,10 @@ def update_config(
     """Update config fields."""
     if data.default_agent is not None:
         ctx.config.set_user("default_agent", data.default_agent)
-    if data.chat_max_history is not None:
-        ctx.config.set_user("chat_max_history", data.chat_max_history)
-    if data.job_max_history is not None:
-        ctx.config.set_user("job_max_history", data.job_max_history)
 
     # Reload to sync in-memory with file (filesystem observer would do this)
     ctx.config.reload()
 
     return {
         "default_agent": ctx.config.default_agent,
-        "chat_max_history": ctx.config.chat_max_history,
-        "job_max_history": ctx.config.job_max_history,
     }

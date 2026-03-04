@@ -6,12 +6,6 @@ This workspace has the following agents configured:
 
 | Agent | Description |
 |-------|-------------|
-| cookie | General-purpose assistant for everyday tasks |
 | pickle | Default agent for general conversations |
+| cookie | Agents handle all memory related tasks. **Always** query him for memory. |
 
-## Usage
-
-Agents are selected based on the routing configuration or can be explicitly invoked via:
-- CLI: `picklebot chat -a cookie`
-- Telegram/Discord: Based on routing rules
-- Cron jobs: Specified in the cron definition

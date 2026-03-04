@@ -2,20 +2,18 @@
 
 This workspace contains agents, skills, and scheduled tasks for the pickle-bot assistant system.
 
-## Structure
 
-- `agents/` - Agent definitions (AGENT.md + optional SOUL.md)
-- `skills/` - Reusable skill modules (SKILL.md)
-- `crons/` - Scheduled tasks (CRON.md)
+## Workspace
 
-## Working with Files
+- Workspace: `{{workspace}}`
+- Skills: `{{skills_path}}`
+- Crons: `{{crons_path}}`
+- Memories: `{{memories_path}}`
+- Multi-Agents: `{{workspace}}`
 
-- All definitions use YAML frontmatter + Markdown body format
-- Template variables like `{{workspace_path}}` are automatically substituted
-- Files are loaded at startup and cached for performance
+```
+{{workspace}}
+├── config.user.yaml      # User configuration (created by onboarding)
+├── config.runtime.yaml   # Runtime state (optional, internal, auto-managed)
 
-## Best Practices
-
-- Keep agent prompts focused and clear
-- Use skills for reusable capabilities
-- Test crons with short intervals first before production schedules
+```

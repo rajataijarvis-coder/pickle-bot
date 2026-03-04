@@ -55,5 +55,3 @@ class ConfigUpdate(BaseModel):
     """Request body for updating config (partial updates)."""
 
     default_agent: str | None = None
-    chat_max_history: int | None = None
-    job_max_history: int | None = None
