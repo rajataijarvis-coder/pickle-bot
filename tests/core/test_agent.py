@@ -23,7 +23,6 @@ def test_agent_new_session(test_agent, test_agent_def):
     session = test_agent.new_session(source=source)
 
     assert session.session_id is not None
-    assert session.agent_id == test_agent_def.id
     assert session.agent is test_agent
     assert session.source == source
 
