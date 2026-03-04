@@ -153,22 +153,36 @@ class ContextGuard:
 
         return new_session.session_id
 
-    def _generate_summary(
+    async def _generate_summary(
         self,
         session: "AgentSession",
         messages: list[Message],
     ) -> str:
-        """Generate a summary of the conversation.
+        """Generate summary of older messages using agent's LLM.
 
         Args:
             session: Current agent session
-            messages: Messages to summarize
+            messages: Current message list
 
         Returns:
             Generated summary text
-
-        Note:
-            This is a placeholder implementation. The actual LLM-based
-            summarization will be implemented in a future task.
         """
-        return "[Summary generation not yet implemented]"
+        keep_count = max(4, int(len(messages) * 0.2))
+        compress_count = max(2, int(len(messages) * 0.5))
+        compress_count = min(compress_count, len(messages) - keep_count)
+
+        old_messages = messages[:compress_count]
+
+        # Serialize old messages for summary
+        old_text = self._serialize_messages_for_summary(old_messages)
+
+        summary_prompt = f"""Summarize the conversation so far. Keep it factual and concise. Focus on key decisions, facts, and user preferences discovered:
+
+{old_text}"""
+
+        # Use agent's LLM to generate summary
+        response, _ = await session.agent.llm.chat(
+            [{"role": "user", "content": summary_prompt}],
+            [],  # No tools needed
+        )
+        return response

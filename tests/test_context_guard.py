@@ -1,7 +1,8 @@
 # tests/test_context_guard.py
 """Tests for ContextGuard."""
 
-from unittest.mock import MagicMock, patch
+import pytest
+from unittest.mock import MagicMock, patch, AsyncMock
 
 from picklebot.core.context_guard import ContextGuard
 
@@ -152,3 +153,28 @@ class TestCheckAndCompact:
         assert len(result) < len(messages)
         assert result[0]["role"] == "user"
         assert "[Previous conversation summary]" in result[0]["content"]
+
+
+class TestSummaryGeneration:
+    @pytest.mark.asyncio
+    async def test_generate_summary(self):
+        """Generate summary of older messages."""
+        from picklebot.core.context_guard import ContextGuard
+
+        guard = ContextGuard(shared_context=None, token_threshold=1000)
+
+        # Mock session with LLM
+        session = MagicMock()
+        session.agent.llm.chat = AsyncMock(return_value=("Summary text", []))
+
+        messages = [
+            {"role": "user", "content": "What is Python?"},
+            {"role": "assistant", "content": "Python is a programming language."},
+            {"role": "user", "content": "Tell me more"},
+            {"role": "assistant", "content": "It's high-level and interpreted."},
+        ]
+
+        summary = await guard._generate_summary(session, messages)
+
+        assert summary == "Summary text"
+        session.agent.llm.chat.assert_called_once()
