@@ -1,0 +1,9 @@
+# User configuration for default workspace
+# This file provides minimal config for testing
+
+llm:
+  provider: openai
+  model: gpt-4
+  api_key: test-key
+
+default_agent: pickle

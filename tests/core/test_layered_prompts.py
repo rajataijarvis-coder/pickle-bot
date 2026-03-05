@@ -10,7 +10,7 @@ from picklebot.core.agent import Agent, AgentSession
 from picklebot.core.context import SharedContext
 from picklebot.core.context_guard import ContextGuard
 from picklebot.core.prompt_builder import PromptBuilder
-from picklebot.messagebus.cli_bus import CliEventSource
+from picklebot.core.events import CliEventSource
 from picklebot.tools.registry import ToolRegistry
 from picklebot.utils.config import Config
 
@@ -99,7 +99,6 @@ class TestPromptConcatenation:
 
         session = AgentSession(
             session_id=str(uuid.uuid4()),
-            agent_id=agent_def.id,
             shared_context=workspace_context,
             agent=agent,
             tools=tools,
