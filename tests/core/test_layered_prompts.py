@@ -10,6 +10,7 @@ from picklebot.core.context import SharedContext
 from picklebot.core.context_guard import ContextGuard
 from picklebot.core.prompt_builder import PromptBuilder
 from picklebot.core.events import CliEventSource
+from picklebot.core.session_state import SessionState
 from picklebot.tools.registry import ToolRegistry
 from picklebot.utils.config import Config
 
@@ -96,13 +97,20 @@ class TestPromptConcatenation:
         tools = ToolRegistry()  # Empty tool registry for testing
         guard = ContextGuard(shared_context=workspace_context)
 
-        session = AgentSession(
+        # Create SessionState first
+        state = SessionState(
             session_id=str(uuid.uuid4()),
-            shared_context=workspace_context,
             agent=agent,
-            tools=tools,
+            messages=[],
             source=CliEventSource(),
+            shared_context=workspace_context,
+        )
+
+        session = AgentSession(
+            agent=agent,
+            state=state,
             context_guard=guard,
+            tools=tools,
         )
         return session
 

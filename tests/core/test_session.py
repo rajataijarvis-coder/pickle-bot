@@ -10,8 +10,8 @@ def test_session_add_message(test_agent):
 
     session.add_message({"role": "user", "content": "Hello"})
 
-    assert len(session.messages) == 1
-    assert session.messages[0]["role"] == "user"
+    assert len(session.state.messages) == 1
+    assert session.state.messages[0]["role"] == "user"
 
     # Verify persisted - Agent has context, AgentSession has shared_context
     messages = test_agent.context.history_store.get_messages(session.session_id)

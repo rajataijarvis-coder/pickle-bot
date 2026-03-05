@@ -10,9 +10,11 @@ from picklebot.core.events import InboundEvent, OutboundEvent, CliEventSource
 from picklebot.utils.config import Config
 
 
-def test_chat_loop_processes_user_input_and_displays_response(test_config: Config):
+def test_chat_loop_processes_user_input_and_displays_response(
+    test_config_with_agent: Config,
+):
     """Test that chat loop handles input and displays agent response."""
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Verify response_queue exists
     assert hasattr(
@@ -87,9 +89,9 @@ def test_chat_loop_processes_user_input_and_displays_response(test_config: Confi
     asyncio.run(run_test())
 
 
-def test_chat_loop_has_no_messagebus_worker(test_config: Config):
+def test_chat_loop_has_no_messagebus_worker(test_config_with_agent: Config):
     """Test that ChatLoop doesn't use MessageBusWorker."""
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Check workers list
     worker_types = [type(worker).__name__ for worker in chat_loop.workers]
@@ -119,9 +121,9 @@ def test_warnings_are_suppressed():
 
 
 @pytest.mark.asyncio
-async def test_chat_loop_subscribes_to_outbound_events(test_config: Config):
+async def test_chat_loop_subscribes_to_outbound_events(test_config_with_agent: Config):
     """Test that ChatLoop subscribes to OutboundEvents."""
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Check subscription exists
     subscribers = chat_loop.context.eventbus._subscribers.get(OutboundEvent, [])
@@ -129,12 +131,12 @@ async def test_chat_loop_subscribes_to_outbound_events(test_config: Config):
     assert chat_loop.handle_outbound_event in subscribers
 
 
-def test_get_user_input_returns_trimmed_input(test_config: Config):
+def test_get_user_input_returns_trimmed_input(test_config_with_agent: Config):
     """Test that get_user_input returns trimmed user input."""
     import io
     import sys
 
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Mock stdin with input that has leading/trailing whitespace
     test_input = "  Hello, agent!  \n"
@@ -148,11 +150,11 @@ def test_get_user_input_returns_trimmed_input(test_config: Config):
     sys.stdin = sys.__stdin__
 
 
-def test_display_agent_response_prints_styled_output(test_config: Config):
+def test_display_agent_response_prints_styled_output(test_config_with_agent: Config):
     """Test that display_agent_response prints with green prefix."""
     from io import StringIO
 
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Capture stdout
     captured_output = StringIO()
@@ -170,12 +172,12 @@ def test_display_agent_response_prints_styled_output(test_config: Config):
 
 
 @pytest.mark.asyncio
-async def test_chat_loop_handles_quit_command(test_config: Config):
+async def test_chat_loop_handles_quit_command(test_config_with_agent: Config):
     """Test that chat loop exits on quit command."""
     import io
     import sys
 
-    chat_loop = ChatLoop(test_config)
+    chat_loop = ChatLoop(test_config_with_agent)
 
     # Mock input to return 'quit'
     sys.stdin = io.StringIO("quit\n")

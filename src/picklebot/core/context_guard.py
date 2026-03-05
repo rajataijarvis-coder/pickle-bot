@@ -10,8 +10,9 @@ from litellm.types.completion import (
     ChatCompletionAssistantMessageParam,
 )
 
+from picklebot.core.session_state import SessionState
+
 if TYPE_CHECKING:
-    from picklebot.core.agent import AgentSession
     from picklebot.core.context import SharedContext
     from picklebot.core.session_state import SessionState
 
@@ -108,7 +109,7 @@ class ContextGuard:
         Returns:
             Full message list for LLM
         """
-        system_prompt = state.shared_context.prompt_builder.build_for_state(state)
+        system_prompt = state.shared_context.prompt_builder.build(state)
         messages: list[Message] = [{"role": "system", "content": system_prompt}]
         messages.extend(state.get_history())
         return messages
@@ -156,7 +157,7 @@ class ContextGuard:
         history_messages = messages[1:]
 
         # Generate summary of older messages
-        summary = await self._generate_summary_from_state(state, history_messages)
+        summary = await self._generate_summary(state, history_messages)
 
         # Roll to new session
         new_state = self._roll_session(state, summary)
@@ -166,9 +167,7 @@ class ContextGuard:
         result_messages: list[Message] = [
             {
                 "role": "system",
-                "content": state.shared_context.prompt_builder.build_for_state(
-                    new_state
-                ),
+                "content": state.shared_context.prompt_builder.build(new_state),
             }
         ]
         result_messages.extend(compacted_history)
@@ -185,7 +184,6 @@ class ContextGuard:
         Returns:
             New SessionState with fresh session
         """
-        from picklebot.core.session_state import SessionState
 
         # Generate new session ID
         new_session_id = str(uuid.uuid4())
@@ -212,7 +210,7 @@ class ContextGuard:
             shared_context=state.shared_context,
         )
 
-    async def _generate_summary_from_state(
+    async def _generate_summary(
         self,
         state: "SessionState",
         messages: list[Message],
@@ -241,116 +239,6 @@ class ContextGuard:
 
         # Use agent's LLM to generate summary
         response, _ = await state.agent.llm.chat(
-            [{"role": "user", "content": summary_prompt}],
-            [],  # No tools needed
-        )
-        return response
-
-    # Legacy methods for backward compatibility with AgentSession
-
-    async def check_and_compact_legacy(
-        self,
-        session: "AgentSession",
-        messages: list[Message],
-    ) -> list[Message]:
-        """Check token count, compact and roll session if needed.
-
-        DEPRECATED: Use check_and_compact with SessionState instead.
-
-        Args:
-            session: Current agent session
-            messages: Current message list
-
-        Returns:
-            Messages to use (either original or compacted)
-        """
-        token_count = self.count_tokens(messages, session.agent.llm.model)
-
-        if token_count < self.token_threshold:
-            return messages
-
-        # Over threshold - compact and roll
-        return await self._compact_and_roll_legacy(session, messages)
-
-    async def _compact_and_roll_legacy(
-        self,
-        session: "AgentSession",
-        messages: list[Message],
-    ) -> list[Message]:
-        """Compact history, roll to new session, return new messages.
-
-        DEPRECATED: For backward compatibility only.
-
-        Args:
-            session: Current agent session
-            messages: Current message list
-
-        Returns:
-            Compacted message list
-        """
-        # Generate summary of older messages
-        summary = await self._generate_summary(session, messages)
-
-        # Roll to new session
-        self._roll_session_legacy(session, summary)
-
-        # Return compacted messages
-        return self._build_compacted_messages(summary, messages)
-
-    def _roll_session_legacy(self, session: "AgentSession", summary: str) -> str:
-        """Create new session, update source mapping, return new ID.
-
-        DEPRECATED: For backward compatibility only.
-
-        Args:
-            session: Current agent session
-            summary: Generated summary (unused here but available)
-
-        Returns:
-            New session ID
-        """
-        # Create new session
-        new_session = session.agent.new_session(session.source)
-
-        # Update source -> session mapping
-        self.shared_context.config.set_runtime(
-            f"sources.{session.source}",
-            {"session_id": new_session.session_id},
-        )
-
-        return new_session.session_id
-
-    async def _generate_summary(
-        self,
-        session: "AgentSession",
-        messages: list[Message],
-    ) -> str:
-        """Generate summary of older messages using agent's LLM.
-
-        DEPRECATED: For backward compatibility only.
-
-        Args:
-            session: Current agent session
-            messages: Current message list
-
-        Returns:
-            Generated summary text
-        """
-        keep_count = max(4, int(len(messages) * 0.2))
-        compress_count = max(2, int(len(messages) * 0.5))
-        compress_count = min(compress_count, len(messages) - keep_count)
-
-        old_messages = messages[:compress_count]
-
-        # Serialize old messages for summary
-        old_text = self._serialize_messages_for_summary(old_messages)
-
-        summary_prompt = f"""Summarize the conversation so far. Keep it factual and concise. Focus on key decisions, facts, and user preferences discovered:
-
-{old_text}"""
-
-        # Use agent's LLM to generate summary
-        response, _ = await session.agent.llm.chat(
             [{"role": "user", "content": summary_prompt}],
             [],  # No tools needed
         )

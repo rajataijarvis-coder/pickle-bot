@@ -123,9 +123,7 @@ class TestCheckAndCompactWithSessionState:
         mock_context.config = MagicMock()
         mock_context.config.set_runtime = MagicMock()
         mock_context.prompt_builder = MagicMock()
-        mock_context.prompt_builder.build_for_state = MagicMock(
-            return_value="System prompt"
-        )
+        mock_context.prompt_builder.build = MagicMock(return_value="System prompt")
         return mock_context
 
     @pytest.fixture
@@ -270,15 +268,28 @@ class TestCheckAndCompactWithSessionState:
 
 class TestSummaryGeneration:
     @pytest.mark.asyncio
-    async def test_generate_summary(self):
-        """Generate summary of older messages."""
+    async def test_generate_summary(self, tmp_path):
+        """Generate summary of older messages using SessionState."""
         from picklebot.core.context_guard import ContextGuard
 
         guard = ContextGuard(shared_context=None, token_threshold=1000)
 
-        # Mock session with LLM
-        session = MagicMock()
-        session.agent.llm.chat = AsyncMock(return_value=("Summary text", []))
+        # Mock agent with LLM
+        mock_agent = MagicMock()
+        mock_agent.llm.chat = AsyncMock(return_value=("Summary text", []))
+
+        # Mock context
+        mock_context = MagicMock()
+
+        # Create SessionState
+        source = TelegramEventSource(user_id="123", chat_id="456")
+        state = SessionState(
+            session_id="test-session",
+            agent=mock_agent,
+            messages=[],
+            source=source,
+            shared_context=mock_context,
+        )
 
         messages = [
             {"role": "user", "content": "What is Python?"},
@@ -287,7 +298,7 @@ class TestSummaryGeneration:
             {"role": "assistant", "content": "It's high-level and interpreted."},
         ]
 
-        summary = await guard._generate_summary(session, messages)
+        summary = await guard._generate_summary(state, messages)
 
         assert summary == "Summary text"
-        session.agent.llm.chat.assert_called_once()
+        mock_agent.llm.chat.assert_called_once()

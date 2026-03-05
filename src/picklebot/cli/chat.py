@@ -15,7 +15,11 @@ from rich.panel import Panel  # noqa: E402
 from rich.prompt import Prompt  # noqa: E402
 from rich.text import Text  # noqa: E402
 
-from picklebot.core.events import OutboundEvent, CliEventSource, InboundEvent  # noqa: E402
+from picklebot.core.events import (
+    OutboundEvent,
+    CliEventSource,
+    InboundEvent,
+)  # noqa: E402
 from picklebot.core.context import SharedContext  # noqa: E402
 from picklebot.server import (  # noqa: E402
     AgentWorker,
@@ -48,7 +52,6 @@ class ChatLoop:
         if not agent_id:
             agent_id = self.config.default_agent
         self.agent = self.context.agent_loader.load(agent_id)
-
 
     async def handle_outbound_event(self, event: OutboundEvent) -> None:
         """Handle outbound events by adding to response queue."""
@@ -100,9 +103,11 @@ class ChatLoop:
                 if not user_input:
                     continue
 
-                session_id = Agent(self.agent, self.context).new_session(
-                    CliEventSource()
-                ).session_id
+                session_id = (
+                    Agent(self.agent, self.context)
+                    .new_session(CliEventSource())
+                    .session_id
+                )
 
                 event = InboundEvent(
                     session_id=session_id,
