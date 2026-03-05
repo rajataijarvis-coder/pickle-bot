@@ -15,11 +15,11 @@ from rich.panel import Panel  # noqa: E402
 from rich.prompt import Prompt  # noqa: E402
 from rich.text import Text  # noqa: E402
 
-from picklebot.core.events import (
+from picklebot.core.events import ( # noqa: E402
     OutboundEvent,
     CliEventSource,
     InboundEvent,
-)  # noqa: E402
+)  
 from picklebot.core.context import SharedContext  # noqa: E402
 from picklebot.server import (  # noqa: E402
     AgentWorker,
@@ -93,6 +93,12 @@ class ChatLoop:
         for worker in self.workers:
             worker.start()
 
+        session_id = (
+            Agent(self.agent, self.context)
+            .new_session(CliEventSource())
+            .session_id
+        )
+
         try:
             while True:
                 user_input = await asyncio.to_thread(self.get_user_input)
@@ -102,13 +108,7 @@ class ChatLoop:
 
                 if not user_input:
                     continue
-
-                session_id = (
-                    Agent(self.agent, self.context)
-                    .new_session(CliEventSource())
-                    .session_id
-                )
-
+                
                 event = InboundEvent(
                     session_id=session_id,
                     agent_id=self.agent.id,
