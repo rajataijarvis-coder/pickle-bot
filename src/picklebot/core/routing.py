@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from re import Pattern
 from typing import TYPE_CHECKING
 
+from picklebot.core.agent import Agent
+from picklebot.core.events import EventSource
+
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
 
@@ -72,3 +75,32 @@ class RoutingTable:
             if binding.pattern.match(source):
                 return binding.agent
         return self._context.config.default_agent
+
+    def get_or_create_session_id(self, source: EventSource, agent_id: str) -> str:
+        """Get existing session_id from source cache, or create new session.
+
+        Args:
+            source: Typed EventSource object
+            agent_id: Agent identifier to use for session creation
+
+        Returns:
+            session_id: Existing or newly created session identifier
+        """
+        source_str = str(source)
+
+        # Check cache first
+        source_info = self._context.config.sources.get(source_str)
+        if source_info:
+            return source_info["session_id"]
+
+        # Create new session
+        agent_def = self._context.agent_loader.load(agent_id)
+        agent = Agent(agent_def, self._context)
+        session = agent.new_session(source)
+
+        # Cache the session
+        self._context.config.set_runtime(
+            f"sources.{source_str}", {"session_id": session.session_id}
+        )
+
+        return session.session_id
