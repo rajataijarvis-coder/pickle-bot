@@ -49,12 +49,16 @@ class Server:
         """Create all workers."""
         self.config_reloader.start()
 
+        # Create WebSocketWorker first and attach to context
+        ws_worker = WebSocketWorker(self.context)
+        self.context.websocket_worker = ws_worker
+
         self.workers = [
             self.context.eventbus,  # EventBus (active worker)
             AgentWorker(self.context),  # SubscriberWorker
             CronWorker(self.context),  # Active worker
             DeliveryWorker(self.context),  # SubscriberWorker
-            WebSocketWorker(self.context),  # SubscriberWorker
+            ws_worker,  # WebSocketWorker (SubscriberWorker)
         ]
 
         if self.context.config.messagebus.enabled:
