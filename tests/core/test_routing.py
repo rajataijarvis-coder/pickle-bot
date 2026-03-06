@@ -1,5 +1,6 @@
 # tests/core/test_routing.py
 
+import pytest
 from unittest.mock import patch
 
 from picklebot.core.routing import Binding, RoutingTable
@@ -252,3 +253,26 @@ def test_get_or_create_session_id_creates_new_session(mock_context):
             expected_cache_key,
             {"session_id": new_session_id}
         )
+
+
+def test_get_or_create_session_id_propagates_agent_not_found(mock_context):
+    """Test that exceptions from agent loading are propagated."""
+    from picklebot.channel.telegram_channel import TelegramEventSource
+    from picklebot.core.routing import RoutingTable
+    from unittest.mock import MagicMock
+
+    # Setup
+    routing = RoutingTable(mock_context)
+    source = TelegramEventSource(user_id="123", chat_id="456")
+    agent_id = "nonexistent-agent"
+
+    # Ensure cache is empty (cache-miss scenario)
+    mock_context.config.sources = {}
+
+    # Mock agent loader to raise exception
+    mock_context.agent_loader = MagicMock()
+    mock_context.agent_loader.load.side_effect = FileNotFoundError("Agent not found")
+
+    # Execute & Verify
+    with pytest.raises(FileNotFoundError, match="Agent not found"):
+        routing.get_or_create_session_id(source, agent_id)
