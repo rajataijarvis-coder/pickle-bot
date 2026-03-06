@@ -275,3 +275,78 @@ def test_get_or_create_session_id_propagates_agent_not_found(mock_context):
     # Execute & Verify
     with pytest.raises(FileNotFoundError, match="Agent not found"):
         routing.get_or_create_session_id(source, agent_id)
+
+
+# Test add_runtime_binding and clear_session_cache methods
+
+
+@pytest.fixture
+def routing_table(mock_context):
+    """Create RoutingTable with mock context."""
+    from picklebot.core.routing import RoutingTable
+
+    # Setup mock context with necessary attributes
+    mock_context.config.routing = {"bindings": []}
+    mock_context.config.sources = {}
+
+    return RoutingTable(mock_context)
+
+
+def test_add_runtime_binding(routing_table, mock_context):
+    """Test adding runtime binding."""
+    # Setup: no existing bindings
+    mock_context.config.routing = {"bindings": []}
+
+    # Add binding
+    routing_table.add_runtime_binding("platform-telegram:user_123:chat_456", "cookie")
+
+    # Verify binding added
+    bindings = mock_context.config.routing["bindings"]
+    assert len(bindings) == 1
+    assert bindings[0]["agent"] == "cookie"
+    assert bindings[0]["value"] == "platform-telegram:user_123:chat_456"
+
+    # Verify cache cleared (forces reload)
+    assert routing_table._bindings is None
+
+
+def test_add_runtime_binding_appends_existing(routing_table, mock_context):
+    """Test adding binding appends to existing bindings."""
+    # Setup: existing binding
+    mock_context.config.routing = {
+        "bindings": [{"agent": "pickle", "value": "platform-cli:.*"}]
+    }
+
+    # Add new binding
+    routing_table.add_runtime_binding("platform-telegram:user_123:chat_456", "cookie")
+
+    # Verify both bindings present
+    bindings = mock_context.config.routing["bindings"]
+    assert len(bindings) == 2
+    assert bindings[0]["agent"] == "pickle"
+    assert bindings[1]["agent"] == "cookie"
+
+
+def test_clear_session_cache(routing_table, mock_context):
+    """Test clearing session cache for a source."""
+    # Setup: source has cached session
+    source_str = "platform-telegram:user_123:chat_456"
+    mock_context.config.sources = {source_str: {"session_id": "existing-session-123"}}
+
+    # Clear cache
+    routing_table.clear_session_cache(source_str)
+
+    # Verify source removed
+    assert source_str not in mock_context.config.sources
+
+
+def test_clear_session_cache_nonexistent(routing_table, mock_context):
+    """Test clearing cache for nonexistent source is safe."""
+    # Setup: no sources
+    mock_context.config.sources = {}
+
+    # Clear nonexistent source (should not error)
+    routing_table.clear_session_cache("platform-telegram:user:chat")
+
+    # Verify still empty
+    assert len(mock_context.config.sources) == 0
