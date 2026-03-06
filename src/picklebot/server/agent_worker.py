@@ -90,6 +90,17 @@ class AgentWorker(SubscriberWorker):
                     session = agent.new_session(event.source)
                     session_id = session.session_id
 
+                # Check for slash command FIRST
+                if event.content.startswith("/"):
+                    result = await self.context.command_registry.dispatch(
+                        event.content, session
+                    )
+                    if result:
+                        # Emit response and skip agent chat
+                        await self._emit_response(event, result, session, agent_def.id)
+                        logger.info(f"Command completed: {session_id}")
+                        return
+
                 response = await session.chat(event.content)
                 logger.info(f"Session completed: {session_id}")
 
@@ -145,6 +156,21 @@ class AgentWorker(SubscriberWorker):
                 content=content,
                 error=str(error) if error else None,
             )
+
+    async def _emit_response(
+        self,
+        event: ProcessableEvent,
+        content: str,
+        session,
+        agent_id: str,
+    ) -> None:
+        """Emit response event with content."""
+        result_event = self.create_reponse_event(
+            event,
+            agent_id,
+            content,
+        )
+        await self.context.eventbus.publish(result_event)
 
     def _get_or_create_semaphore(self, agent_def: "AgentDef") -> asyncio.Semaphore:
         """Get existing or create new semaphore for agent."""

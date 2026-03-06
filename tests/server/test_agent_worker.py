@@ -532,3 +532,91 @@ async def test_agent_dispatcher_handles_dispatch_event(test_context):
     assert dispatched.session_id == "job-session"
     assert dispatched.agent_id == "test-agent"
     assert dispatched.content == "Run task"
+
+
+# ============================================================================
+# Tests for command dispatch
+# ============================================================================
+
+
+@pytest.mark.anyio
+async def test_agent_worker_dispatches_command(test_context, tmp_path):
+    """Test AgentWorker dispatches slash commands before chat."""
+    from picklebot.core.events import OutboundEvent, CliEventSource
+
+    create_test_agent(tmp_path, agent_id="test-agent")
+
+    agent_def = test_context.agent_loader.load("test-agent")
+
+    worker = AgentWorker(test_context)
+
+    event = InboundEvent(
+        session_id="test-session",
+        agent_id="test-agent",
+        source=CliEventSource(),
+        content="/help",
+        timestamp=time.time(),
+    )
+
+    # Track outbound events
+    outbound_events: list[OutboundEvent] = []
+
+    async def capture_outbound(evt: OutboundEvent) -> None:
+        outbound_events.append(evt)
+
+    test_context.eventbus.subscribe(OutboundEvent, capture_outbound)
+
+    # Start EventBus worker to process queued events
+    eventbus_task = test_context.eventbus.start()
+
+    try:
+        await worker.exec_session(event, agent_def)
+
+        # Wait for EventBus to process the queued event
+        await asyncio.sleep(0.1)
+
+        # Verify response emitted with command result
+        assert len(outbound_events) == 1
+        result = outbound_events[0]
+        assert "**Available Commands:**" in result.content
+    finally:
+        eventbus_task.cancel()
+        try:
+            await eventbus_task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.anyio
+async def test_command_skips_agent_chat(test_context, tmp_path):
+    """Test that commands don't trigger agent chat."""
+    from picklebot.core.events import CliEventSource
+
+    create_test_agent(tmp_path, agent_id="test-agent")
+
+    agent_def = test_context.agent_loader.load("test-agent")
+
+    worker = AgentWorker(test_context)
+
+    event = InboundEvent(
+        session_id="test",
+        agent_id="test-agent",
+        source=CliEventSource(),
+        content="/help",
+        timestamp=time.time(),
+    )
+
+    with patch("picklebot.server.agent_worker.Agent") as MockAgent:
+        mock_session = AsyncMock()
+        mock_session.chat = AsyncMock()
+        mock_session.session_id = "test"
+
+        mock_agent = MagicMock()
+        mock_agent.new_session.return_value = mock_session
+        mock_agent.resume_session.return_value = mock_session
+        MockAgent.return_value = mock_agent
+
+        await worker.exec_session(event, agent_def)
+
+        # Verify chat was NOT called
+        mock_session.chat.assert_not_called()
