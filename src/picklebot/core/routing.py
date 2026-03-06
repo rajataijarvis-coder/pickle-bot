@@ -100,8 +100,7 @@ class RoutingTable:
 
         # Cache the session
         self._context.config.set_runtime(
-            f"sources.{source_str}",
-            {"session_id": session.session_id}
+            f"sources.{source_str}", {"session_id": session.session_id}
         )
 
         return session.session_id

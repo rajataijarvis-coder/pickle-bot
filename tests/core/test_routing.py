@@ -198,9 +198,7 @@ def test_get_or_create_session_id_cache_hit(mock_context):
     mock_context.agent_loader = MagicMock()
 
     # Pre-populate cache - use a real dict instead of MagicMock
-    mock_context.config.sources = {
-        str(source): {"session_id": existing_session_id}
-    }
+    mock_context.config.sources = {str(source): {"session_id": existing_session_id}}
 
     # Execute
     result = routing.get_or_create_session_id(source, agent_id)
@@ -237,7 +235,9 @@ def test_get_or_create_session_id_creates_new_session(mock_context):
     mock_agent.new_session.return_value = mock_session
 
     # Mock Agent constructor
-    with patch('picklebot.core.routing.Agent', return_value=mock_agent) as mock_agent_class:
+    with patch(
+        "picklebot.core.routing.Agent", return_value=mock_agent
+    ) as mock_agent_class:
         # Execute
         result = routing.get_or_create_session_id(source, agent_id)
 
@@ -250,8 +250,7 @@ def test_get_or_create_session_id_creates_new_session(mock_context):
         # Verify cache update
         expected_cache_key = f"sources.{str(source)}"
         mock_context.config.set_runtime.assert_called_once_with(
-            expected_cache_key,
-            {"session_id": new_session_id}
+            expected_cache_key, {"session_id": new_session_id}
         )
 
 
