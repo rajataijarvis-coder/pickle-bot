@@ -1,5 +1,7 @@
 # tests/core/test_routing.py
 
+from unittest.mock import patch
+
 from picklebot.core.routing import Binding, RoutingTable
 
 
@@ -206,3 +208,47 @@ def test_get_or_create_session_id_cache_hit(mock_context):
     assert result == existing_session_id
     # Ensure no new session was created
     mock_context.agent_loader.load.assert_not_called()
+
+
+def test_get_or_create_session_id_creates_new_session(mock_context):
+    """Test that new session is created when not in cache."""
+    from picklebot.channel.telegram_channel import TelegramEventSource
+    from picklebot.core.routing import RoutingTable
+    from unittest.mock import MagicMock
+
+    # Setup
+    routing = RoutingTable(mock_context)
+    source = TelegramEventSource(user_id="123", chat_id="456")
+    agent_id = "test-agent"
+    new_session_id = "new-session-789"
+
+    # Ensure cache is empty (cache-miss scenario)
+    mock_context.config.sources = {}
+
+    # Mock agent creation
+    mock_agent_def = MagicMock()
+    mock_context.agent_loader.load.return_value = mock_agent_def
+
+    mock_session = MagicMock()
+    mock_session.session_id = new_session_id
+
+    mock_agent = MagicMock()
+    mock_agent.new_session.return_value = mock_session
+
+    # Mock Agent constructor
+    with patch('picklebot.core.routing.Agent', return_value=mock_agent) as mock_agent_class:
+        # Execute
+        result = routing.get_or_create_session_id(source, agent_id)
+
+        # Verify
+        assert result == new_session_id
+        mock_context.agent_loader.load.assert_called_once_with(agent_id)
+        mock_agent_class.assert_called_once_with(mock_agent_def, mock_context)
+        mock_agent.new_session.assert_called_once_with(source)
+
+        # Verify cache update
+        expected_cache_key = f"sources.{str(source)}"
+        mock_context.config.set_runtime.assert_called_once_with(
+            expected_cache_key,
+            {"session_id": new_session_id}
+        )
