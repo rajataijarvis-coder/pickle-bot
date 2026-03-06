@@ -1,12 +1,13 @@
 # src/picklebot/core/commands/registry.py
 """Command registry for managing slash commands."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from picklebot.core.commands.base import Command
 
 if TYPE_CHECKING:
-    from picklebot.core.context import SharedContext
+    from picklebot.core.agent import AgentSession
 
 
 class CommandRegistry:
@@ -56,13 +57,13 @@ class CommandRegistry:
             return (cmd, args)
         return None
 
-    def dispatch(self, input: str, ctx: "SharedContext") -> str | None:
+    async def dispatch(self, input: str, session: "AgentSession") -> str | None:
         """
         Parse and execute a slash command.
 
         Args:
             input: Full input string
-            ctx: SharedContext for accessing loaders
+            session: AgentSession with full context
 
         Returns:
             Response string if command matched, None if not a command
@@ -72,7 +73,10 @@ class CommandRegistry:
             return None
 
         cmd, args = resolved
-        return cmd.execute(args, ctx)
+        result = cmd.execute(args, session)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
 
     @classmethod
     def with_builtins(cls) -> "CommandRegistry":

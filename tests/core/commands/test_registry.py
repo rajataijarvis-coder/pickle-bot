@@ -13,7 +13,7 @@ class MockCommand(Command):
     name = "mock"
     aliases = ["m"]
 
-    def execute(self, args: str, ctx) -> str:
+    async def execute(self, args: str, session) -> str:
         return f"mock: {args}"
 
 
@@ -62,12 +62,13 @@ class TestCommandRegistry:
             ("/mock test", "mock: test"),
         ],
     )
-    def test_dispatch(self, input, expected):
+    @pytest.mark.asyncio
+    async def test_dispatch(self, input, expected):
         """dispatch() should execute or return None."""
         registry = CommandRegistry()
         registry.register(MockCommand())
 
-        result = registry.dispatch(input, None)
+        result = await registry.dispatch(input, None)
 
         assert result == expected
 
@@ -82,8 +83,14 @@ class TestCommandRegistryWithBuiltins:
         # Should have all 8 commands
         names = {cmd.name for cmd in registry.list_commands()}
         assert names == {
-            "help", "agent", "skills", "crons",
-            "compact", "context", "clear", "session"
+            "help",
+            "agent",
+            "skills",
+            "crons",
+            "compact",
+            "context",
+            "clear",
+            "session",
         }
 
     def test_with_builtins_has_aliases(self):
@@ -93,14 +100,43 @@ class TestCommandRegistryWithBuiltins:
         assert registry._commands.get("?") is not None
         assert registry._commands.get("agents") is not None
 
-    def test_dispatch_help(self):
+    @pytest.mark.asyncio
+    async def test_dispatch_help(self, mock_context):
         """dispatch /help should return command list."""
         from unittest.mock import MagicMock
 
         registry = CommandRegistry.with_builtins()
-        mock_ctx = MagicMock()
-        mock_ctx.command_registry = registry
+        mock_session = MagicMock()
+        mock_session.shared_context = mock_context
+        mock_context.command_registry = registry
 
-        result = registry.dispatch("/help", mock_ctx)
+        result = await registry.dispatch("/help", mock_session)
 
         assert "Available Commands" in result
+
+    @pytest.mark.asyncio
+    async def test_dispatch_with_session(self, mock_context):
+        """Test dispatch with AgentSession."""
+        from unittest.mock import MagicMock
+
+        registry = CommandRegistry.with_builtins()
+        mock_session = MagicMock()
+        mock_session.shared_context = mock_context
+        mock_context.command_registry = registry
+
+        result = await registry.dispatch("/help", mock_session)
+
+        assert result is not None
+        assert "**Available Commands:**" in result
+
+    @pytest.mark.asyncio
+    async def test_dispatch_non_command_returns_none(self):
+        """Test dispatch returns None for non-command input."""
+        from unittest.mock import MagicMock
+
+        registry = CommandRegistry()
+        mock_session = MagicMock()
+
+        result = await registry.dispatch("regular message", mock_session)
+
+        assert result is None
