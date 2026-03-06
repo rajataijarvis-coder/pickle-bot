@@ -12,7 +12,7 @@ from picklebot.core.prompt_builder import PromptBuilder
 from picklebot.core.events import CliEventSource
 from picklebot.core.session_state import SessionState
 from picklebot.tools.registry import ToolRegistry
-from picklebot.utils.config import Config
+from picklebot.utils.config import Config, LLMConfig
 
 
 # Fixture to provide path to default_workspace
@@ -29,7 +29,11 @@ def default_workspace() -> Path:
 @pytest.fixture
 def workspace_config(default_workspace: Path) -> Config:
     """Config with default_workspace."""
-    return Config.load(default_workspace)
+    return Config(
+        workspace=default_workspace,
+        llm=LLMConfig(provider="openai", model="gpt-4", api_key="test-key"),
+        default_agent="pickle",
+    )
 
 
 @pytest.fixture
