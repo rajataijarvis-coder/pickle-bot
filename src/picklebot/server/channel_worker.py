@@ -17,7 +17,7 @@ class ChannelWorker(Worker):
 
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
-        self.buses = context.messagebus_buses
+        self.buses = context.channels
         self.bus_map = {bus.platform_name: bus for bus in self.buses}
 
     async def run(self) -> None:

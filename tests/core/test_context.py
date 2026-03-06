@@ -7,7 +7,7 @@ import pytest
 from picklebot.core.context import SharedContext
 from picklebot.core.eventbus import EventBus
 from picklebot.core.events import InboundEvent, OutboundEvent, AgentEventSource
-from picklebot.messagebus.telegram_bus import TelegramEventSource, TelegramBus
+from picklebot.channel.telegram_channel import TelegramEventSource, TelegramChannel
 from picklebot.core.routing import RoutingTable
 from picklebot.utils.config import Config, LLMConfig, TelegramConfig
 
@@ -115,45 +115,45 @@ class TestSharedContextCustomBuses:
 
     def test_accepts_buses_parameter(self, mock_config):
         """SharedContext should accept optional buses parameter."""
-        telegram_bus = TelegramBus(config=TelegramConfig(bot_token="test-token"))
+        telegram_bus = TelegramChannel(config=TelegramConfig(bot_token="test-token"))
         context = SharedContext(config=mock_config, buses=[telegram_bus])
 
-        assert context.messagebus_buses == [telegram_bus]
+        assert context.channels == [telegram_bus]
 
     def test_uses_provided_buses_when_given(self, mock_config):
         """When buses are provided, they should be used directly."""
-        telegram_bus = TelegramBus(config=TelegramConfig(bot_token="test-token"))
+        telegram_bus = TelegramChannel(config=TelegramConfig(bot_token="test-token"))
         context = SharedContext(config=mock_config, buses=[telegram_bus])
 
         # Should contain exactly the bus we passed
-        assert len(context.messagebus_buses) == 1
-        assert context.messagebus_buses[0] is telegram_bus
+        assert len(context.channels) == 1
+        assert context.channels[0] is telegram_bus
 
     def test_backward_compatible_loads_from_config_when_buses_none(self, mock_config):
         """When buses=None (default), should load from config like before."""
-        with patch("picklebot.core.context.MessageBus.from_config") as mock_from_config:
+        with patch("picklebot.core.context.Channel.from_config") as mock_from_config:
             mock_from_config.return_value = []
 
             context = SharedContext(config=mock_config, buses=None)
 
             # Should have called from_config with the config
             mock_from_config.assert_called_once_with(mock_config)
-            assert context.messagebus_buses == []
+            assert context.channels == []
 
     def test_backward_compatible_default_behavior(self, mock_config):
         """Without buses parameter, should load from config (backward compat)."""
-        with patch("picklebot.core.context.MessageBus.from_config") as mock_from_config:
+        with patch("picklebot.core.context.Channel.from_config") as mock_from_config:
             mock_from_config.return_value = []
 
             # Call without buses parameter - should work like before
             context = SharedContext(config=mock_config)
 
             mock_from_config.assert_called_once_with(mock_config)
-            assert context.messagebus_buses == []
+            assert context.channels == []
 
     def test_empty_buses_list_is_used_not_config(self, mock_config):
         """Empty list should be used, not fall back to config."""
-        with patch("picklebot.core.context.MessageBus.from_config") as mock_from_config:
+        with patch("picklebot.core.context.Channel.from_config") as mock_from_config:
             mock_from_config.return_value = [
                 MagicMock()
             ]  # Would return something if called
@@ -162,15 +162,15 @@ class TestSharedContextCustomBuses:
             context = SharedContext(config=mock_config, buses=[])
 
             mock_from_config.assert_not_called()
-            assert context.messagebus_buses == []
+            assert context.channels == []
 
     def test_multiple_buses_accepted(self, mock_config):
         """Multiple buses can be passed."""
-        bus1 = TelegramBus(config=TelegramConfig(bot_token="test-token-1"))
-        bus2 = TelegramBus(config=TelegramConfig(bot_token="test-token-2"))
+        bus1 = TelegramChannel(config=TelegramConfig(bot_token="test-token-1"))
+        bus2 = TelegramChannel(config=TelegramConfig(bot_token="test-token-2"))
 
         context = SharedContext(config=mock_config, buses=[bus1, bus2])
 
-        assert len(context.messagebus_buses) == 2
-        assert context.messagebus_buses[0] is bus1
-        assert context.messagebus_buses[1] is bus2
+        assert len(context.channels) == 2
+        assert context.channels[0] is bus1
+        assert context.channels[1] is bus2

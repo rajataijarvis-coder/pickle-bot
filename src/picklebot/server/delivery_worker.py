@@ -12,7 +12,7 @@ from .worker import SubscriberWorker
 
 if TYPE_CHECKING:
     from picklebot.core.context import SharedContext
-    from picklebot.messagebus.base import MessageBus
+    from picklebot.channel.base import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class DeliveryWorker(SubscriberWorker):
         self.logger.info("DeliveryWorker subscribed to OUTBOUND events")
 
     async def _deliver_with_retry(
-        self, chunks: list[str], source: "EventSource", bus: "MessageBus[Any]"
+        self, chunks: list[str], source: "EventSource", bus: "Channel[Any]"
     ) -> bool:
         """Deliver all chunks with retry logic. Returns True on success."""
         for attempt in range(1, MAX_RETRIES + 1):
@@ -206,9 +206,9 @@ class DeliveryWorker(SubscriberWorker):
         except Exception as e:
             self.logger.error(f"Failed to deliver message: {e}")
 
-    def _get_bus(self, platform: str) -> "MessageBus[Any] | None":
+    def _get_bus(self, platform: str) -> "Channel[Any] | None":
         """Get the message bus for a platform."""
-        for bus in self.context.messagebus_buses:
+        for bus in self.context.channels:
             if bus.platform_name == platform:
                 return bus
         return None

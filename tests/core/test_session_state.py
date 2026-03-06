@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 from picklebot.core.session_state import SessionState
-from picklebot.messagebus.telegram_bus import TelegramEventSource
+from picklebot.channel.telegram_channel import TelegramEventSource
 
 
 class TestSessionStateCreation:

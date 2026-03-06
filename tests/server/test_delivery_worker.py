@@ -84,7 +84,7 @@ async def test_handle_event_delivers_to_platform(mock_context):
     mock_bus = Mock()
     mock_bus.platform_name = "telegram"
     mock_bus.reply = AsyncMock()
-    mock_context.messagebus_buses = [mock_bus]
+    mock_context.channels = [mock_bus]
 
     worker = DeliveryWorker(mock_context)
     event = OutboundEvent(
@@ -120,7 +120,7 @@ async def test_delivery_worker_handles_cli_platform(mock_context):
     mock_cli_bus = Mock()
     mock_cli_bus.platform_name = "cli"
     mock_cli_bus.reply = AsyncMock()
-    mock_context.messagebus_buses = [mock_cli_bus]
+    mock_context.channels = [mock_cli_bus]
 
     worker = DeliveryWorker(mock_context)
     event = OutboundEvent(
@@ -216,7 +216,7 @@ class TestDefaultDeliverySource:
         mock_bus = Mock()
         mock_bus.platform_name = "telegram"
         mock_bus.reply = AsyncMock()
-        mock_context.messagebus_buses = [mock_bus]
+        mock_context.channels = [mock_bus]
 
         worker = DeliveryWorker(mock_context)
         event = OutboundEvent(
@@ -283,7 +283,7 @@ class TestDefaultDeliverySource:
         mock_bus = Mock()
         mock_bus.platform_name = "telegram"
         mock_bus.reply = AsyncMock()
-        mock_context.messagebus_buses = [mock_bus]
+        mock_context.channels = [mock_bus]
 
         worker = DeliveryWorker(mock_context)
         event = OutboundEvent(
@@ -369,7 +369,7 @@ class TestDeliverWithRetry:
     @pytest.mark.asyncio
     async def test_deliver_with_retry_success_first_try(self, mock_context):
         """Should return True when delivery succeeds on first attempt."""
-        from picklebot.messagebus.telegram_bus import TelegramEventSource
+        from picklebot.channel.telegram_channel import TelegramEventSource
 
         worker = DeliveryWorker(mock_context)
         mock_bus = Mock()
@@ -386,7 +386,7 @@ class TestDeliverWithRetry:
     @pytest.mark.asyncio
     async def test_deliver_with_retry_retries_on_failure(self, mock_context):
         """Should retry with backoff when delivery fails."""
-        from picklebot.messagebus.telegram_bus import TelegramEventSource
+        from picklebot.channel.telegram_channel import TelegramEventSource
 
         worker = DeliveryWorker(mock_context)
         mock_bus = Mock()
@@ -409,7 +409,7 @@ class TestDeliverWithRetry:
         self, mock_context
     ):
         """Should return False after MAX_RETRIES failures."""
-        from picklebot.messagebus.telegram_bus import TelegramEventSource
+        from picklebot.channel.telegram_channel import TelegramEventSource
 
         worker = DeliveryWorker(mock_context)
         mock_bus = Mock()
@@ -427,7 +427,7 @@ class TestDeliverWithRetry:
     @pytest.mark.asyncio
     async def test_deliver_with_retry_retries_all_chunks_on_failure(self, mock_context):
         """Should retry all chunks from scratch when any chunk fails."""
-        from picklebot.messagebus.telegram_bus import TelegramEventSource
+        from picklebot.channel.telegram_channel import TelegramEventSource
 
         worker = DeliveryWorker(mock_context)
         mock_bus = Mock()

@@ -28,7 +28,7 @@ def create_post_message_tool(context: "SharedContext") -> BaseTool | None:
         return None
 
     # Check if we have any buses configured
-    if not context.messagebus_buses:
+    if not context.channels:
         return None
 
     @tool(

@@ -1,6 +1,6 @@
 """Tests for AgentSession."""
 
-from picklebot.messagebus.telegram_bus import TelegramEventSource
+from picklebot.channel.telegram_channel import TelegramEventSource
 
 
 def test_session_add_message(test_agent):

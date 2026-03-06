@@ -6,7 +6,7 @@ from picklebot.core.agent import Agent
 from picklebot.core.agent_loader import AgentDef
 from picklebot.core.context import SharedContext
 from picklebot.core.events import CronEventSource, CliEventSource
-from picklebot.messagebus.telegram_bus import TelegramEventSource
+from picklebot.channel.telegram_channel import TelegramEventSource
 from picklebot.utils.config import LLMConfig, MessageBusConfig, TelegramConfig
 
 
@@ -170,10 +170,10 @@ class TestAgentNewSessionWithSource:
         context.history_store = HistoryStore(tmp_path)
         context.skill_loader = MagicMock()
         context.skill_loader.list_skills.return_value = []
-        # Mock messagebus_buses for post_message_tool
+        # Mock channels for post_message_tool
         mock_bus = MagicMock()
         mock_bus.platform_name = "telegram"
-        context.messagebus_buses = [mock_bus]
+        context.channels = [mock_bus]
 
         return context
 
