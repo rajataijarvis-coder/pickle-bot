@@ -82,7 +82,7 @@ class BlockingChannel(FakeChannel):
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_publishes_inbound_event(test_context, tmp_path):
+async def test_channel_worker_publishes_inbound_event(test_context, tmp_path):
     """ChannelWorker publishes INBOUND events to EventBus."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -147,7 +147,7 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_ignores_non_whitelisted(test_context, tmp_path):
+async def test_channel_worker_ignores_non_whitelisted(test_context, tmp_path):
     """ChannelWorker ignores messages from non-whitelisted senders."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -189,7 +189,7 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_creates_per_user_session(test_context, tmp_path):
+async def test_channel_worker_creates_per_user_session(test_context, tmp_path):
     """ChannelWorker creates a new session for each user."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -222,7 +222,7 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_reuses_existing_session(test_context, tmp_path):
+async def test_channel_worker_reuses_existing_session(test_context, tmp_path):
     """ChannelWorker reuses session from source cache for returning users."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -286,7 +286,7 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_includes_metadata(test_context, tmp_path):
+async def test_channel_worker_includes_metadata(test_context, tmp_path):
     """ChannelWorker includes platform-specific metadata in events."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -497,7 +497,7 @@ class TestDefaultDeliverySource:
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_uses_routing_table(test_context, tmp_path):
+async def test_channel_worker_uses_routing_table(test_context, tmp_path):
     """ChannelWorker uses routing table to resolve agents."""
     # Create test agents
     agents_dir = tmp_path / "agents"
@@ -533,7 +533,7 @@ You are a test assistant.
 
 
 @pytest.mark.anyio
-async def test_messagebus_worker_event_has_timestamp(test_context, tmp_path):
+async def test_channel_worker_event_has_timestamp(test_context, tmp_path):
     """ChannelWorker events include timestamp."""
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -637,7 +637,7 @@ class TestChannelWorkerRouting:
 
         return context
 
-    def test_messagebus_worker_no_default_agent_in_init(self, mock_context):
+    def test_channel_worker_no_default_agent_in_init(self, mock_context):
         """ChannelWorker should not pre-load default agent."""
         worker = ChannelWorker(mock_context)
 
@@ -676,7 +676,7 @@ class TestChannelWorkerRouting:
                 "sources.platform-telegram:123456:789", {"session_id": "new-session-id"}
             )
 
-    def test_messagebus_worker_routes_unknown_source_to_default(self, mock_context):
+    def test_channel_worker_routes_unknown_source_to_default(self, mock_context):
         """ChannelWorker should route unknown sources to default_agent."""
         from picklebot.core.routing import RoutingTable
 
