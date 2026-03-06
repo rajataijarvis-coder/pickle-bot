@@ -157,6 +157,40 @@ routing:
 
 **Pattern matching:** Regex patterns, most specific wins. Falls back to `default_agent` if no match.
 
+## Slash Commands
+
+Commands for managing conversations and agents. All commands start with `/`.
+
+**Available Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/help` or `/?` | Show available commands |
+| `/agent [<id>]` | List agents or switch to different agent |
+| `/skills` | List all skills |
+| `/crons` | List all cron jobs |
+| `/compact` | Trigger manual context compaction |
+| `/context` | Show session context information |
+| `/clear` | Clear conversation and start fresh |
+| `/session` | Show current session details |
+
+**Examples:**
+
+```bash
+# Switch to cookie agent
+/agent cookie
+
+# Check session info
+/context
+
+# Clear conversation
+/clear
+```
+
+**Agent Switching:**
+
+The `/agent <id>` command updates routing for your channel and starts a fresh conversation with the new agent. Previous conversation history is preserved in the old session.
+
 ## HTTP API
 
 REST API for programmatic access. Enabled by default in server mode.
