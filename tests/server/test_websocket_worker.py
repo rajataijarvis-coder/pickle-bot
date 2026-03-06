@@ -1,7 +1,7 @@
 """Tests for WebSocketWorker."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock
+from unittest.mock import Mock, AsyncMock
 from picklebot.server.websocket_worker import WebSocketWorker
 from picklebot.api.schemas import WebSocketMessage
 from picklebot.core.events import WebSocketEventSource, InboundEvent
@@ -45,27 +45,21 @@ class TestWebSocketWorker:
         mock_ws = Mock()
         mock_ws.accept = AsyncMock()
 
-        # Mock receive_json to be an async generator that immediately stops
+        # Configure mock to return immediately on error to test connection handling
         async def mock_receive():
             raise RuntimeError("Mocked error")
-            return
             yield
 
         mock_ws.receive_json = Mock(side_effect=mock_receive)
 
-        with patch.object(worker, "_run_client_loop"):
-            # Just test that the client is added
-            mock_ws.accept.assert_called_once()
+        # Call handle_connection - this will trigger the try/finally
+        # and call ws.accept() in try block
+        await worker.handle_connection(mock_ws)
 
-            # Check that client was added
-            assert mock_ws in worker.clients
-
-            # Let the context through
-            await asyncio.sleep(0.01)
-
-            # Verify cleanup still works
-            assert mock_ws not in worker.clients
-        assert mock_ws.accept.called
+        # Verify the client was added
+        assert mock_ws in worker.clients
+        # Verify accept was called
+        mock_ws.accept.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_handle_connection_removes_client_on_exit(self, worker):
@@ -74,18 +68,20 @@ class TestWebSocketWorker:
         mock_ws.receive_json = AsyncMock(side_effect=Exception("Disconnect"))
 
         await worker.handle_connection(mock_ws)
-
         assert mock_ws not in worker.clients
 
     def test_normalize_message_with_agent_id(self, worker):
         """Test normalizing message with explicit agent_id."""
-        msg = WebSocketMessage(source="user-123", content="Hello!", agent_id="pickle")
+        msg = WebSocketMessage(
+            source="user-123",
+            content="Hello!",
+            agent_id="pickle"
+        )
 
         # Mock routing/session methods (will be implemented later)
         worker._get_or_create_session = Mock(return_value="session-abc")
 
         event = worker._normalize_message(msg)
-
         assert isinstance(event, InboundEvent)
         assert event.agent_id == "pickle"
         assert event.content == "Hello!"
@@ -94,13 +90,14 @@ class TestWebSocketWorker:
 
     def test_normalize_message_without_agent_id(self, worker):
         """Test normalizing message without agent_id (uses routing)."""
-        msg = WebSocketMessage(source="user-456", content="Hello!", agent_id=None)
-
+        msg = WebSocketMessage(
+            source="user-456",
+            content="Hello!",
+            agent_id=None
+        )
         # Mock routing to return specific agent
         worker._route_message = Mock(return_value="cookie")
         worker._get_or_create_session = Mock(return_value="session-xyz")
-
         event = worker._normalize_message(msg)
-
         assert event.agent_id == "cookie"
         worker._route_message.assert_called_once_with("user-456", "Hello!")
