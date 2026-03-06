@@ -37,14 +37,27 @@ class ContextGuard:
             return 0
         return token_counter(model=model, messages=messages)
 
+    def estimate_tokens(self, state: "SessionState") -> int:
+        """Estimate token count for session state.
+
+        Args:
+            state: Session state to estimate
+
+        Returns:
+            Estimated token count
+        """
+        return self._count_tokens(state.messages, state.agent.agent_def.llm.model)
+
     async def check_and_compact(
         self,
         state: "SessionState",
+        force: bool = False,
     ) -> "SessionState":
         """Check token count, compact and roll session if needed.
 
         Args:
             state: Current session state
+            force: If True, compact even if under threshold
 
         Returns:
             SessionState to use (same state if under threshold,
@@ -52,6 +65,10 @@ class ContextGuard:
         """
         messages = state.build_messages()
         token_count = self._count_tokens(messages, state.agent.llm.model)
+
+        if force:
+            # Force compaction regardless of token count
+            return await self._compact_and_roll(state)
 
         if token_count < self.token_threshold:
             return state

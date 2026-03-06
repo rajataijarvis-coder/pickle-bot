@@ -82,6 +82,10 @@ class CommandRegistry:
             AgentCommand,
             SkillsCommand,
             CronsCommand,
+            CompactCommand,
+            ContextCommand,
+            ClearCommand,
+            SessionCommand,
         )
 
         registry = cls()
@@ -89,4 +93,8 @@ class CommandRegistry:
         registry.register(AgentCommand())
         registry.register(SkillsCommand())
         registry.register(CronsCommand())
+        registry.register(CompactCommand())
+        registry.register(ContextCommand())
+        registry.register(ClearCommand())
+        registry.register(SessionCommand())
         return registry

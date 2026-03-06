@@ -289,3 +289,18 @@ class HistoryStore:
             return messages[-max_history:]
 
         return messages
+
+    def get_session_info(self, session_id: str) -> HistorySession | None:
+        """Get session metadata without loading messages.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            HistorySession if found, None otherwise
+        """
+        sessions = self._read_index()
+        for session in sessions:
+            if session.id == session_id:
+                return session
+        return None
