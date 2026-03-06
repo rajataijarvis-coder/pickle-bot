@@ -135,3 +135,37 @@ class TestCommandExecute:
 
         result = CronsCommand().execute("", mock_session)
         assert "No cron jobs configured" in result
+
+    def test_agent_switch_success(self, mock_session, mock_context):
+        """Test agent command switches agent."""
+        mock_session.shared_context = mock_context
+        mock_session.source = MagicMock()
+        mock_session.source.__str__ = MagicMock(return_value="platform-cli:test")
+
+        # Mock agent exists
+        mock_context.agent_loader.load.return_value = MagicMock()
+
+        cmd = AgentCommand()
+        result = cmd.execute("cookie", mock_session)
+
+        assert "Switched to `cookie`" in result
+        mock_context.routing_table.add_runtime_binding.assert_called_once_with(
+            "platform-cli:test", "cookie"
+        )
+        mock_context.routing_table.clear_session_cache.assert_called_once_with(
+            "platform-cli:test"
+        )
+
+    def test_agent_switch_not_found(self, mock_session, mock_context):
+        """Test agent command handles invalid agent."""
+        mock_session.shared_context = mock_context
+
+        # Mock agent not found
+        mock_context.agent_loader.load.side_effect = ValueError("not found")
+
+        cmd = AgentCommand()
+        result = cmd.execute("nonexistent", mock_session)
+
+        assert "not found" in result
+        mock_context.routing_table.add_runtime_binding.assert_not_called()
+        mock_context.routing_table.clear_session_cache.assert_not_called()
