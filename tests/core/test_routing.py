@@ -194,8 +194,10 @@ def test_get_or_create_session_id_cache_hit(mock_context):
     # Ensure agent_loader is mocked
     mock_context.agent_loader = MagicMock()
 
-    # Pre-populate cache
-    mock_context.config.sources[str(source)] = {"session_id": existing_session_id}
+    # Pre-populate cache - use a real dict instead of MagicMock
+    mock_context.config.sources = {
+        str(source): {"session_id": existing_session_id}
+    }
 
     # Execute
     result = routing.get_or_create_session_id(source, agent_id)
