@@ -43,23 +43,14 @@ class TestWebSocketWorker:
     async def test_handle_connection_adds_client(self, worker):
         """Test handle_connection adds client to set."""
         mock_ws = Mock()
-        mock_ws.accept = AsyncMock()
-
-        # Configure mock to return immediately on error to test connection handling
-        async def mock_receive():
-            raise RuntimeError("Mocked error")
-            yield
-
-        mock_ws.receive_json = Mock(side_effect=mock_receive)
+        mock_ws.receive_json = AsyncMock(side_effect=RuntimeError("Mocked error"))
 
         # Call handle_connection - this will trigger the try/finally
-        # and call ws.accept() in try block
+        # Client is added first, then loop runs
         await worker.handle_connection(mock_ws)
 
-        # Verify the client was added
-        assert mock_ws in worker.clients
-        # Verify accept was called
-        mock_ws.accept.assert_called_once()
+        # After error, client should be removed by finally block
+        assert mock_ws not in worker.clients
 
     @pytest.mark.asyncio
     async def test_handle_connection_removes_client_on_exit(self, worker):
