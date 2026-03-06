@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from picklebot.core.prompt_builder import PromptBuilder
 from picklebot.core.agent_loader import AgentDef
 from picklebot.core.events import CronEventSource
-from picklebot.messagebus.telegram_bus import TelegramEventSource
+from picklebot.channel.telegram_channel import TelegramEventSource
 from picklebot.utils.config import LLMConfig
 
 

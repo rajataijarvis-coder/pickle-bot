@@ -1,26 +1,26 @@
-"""Tests for DiscordBus."""
+"""Tests for DiscordChannel."""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from picklebot.messagebus.discord_bus import DiscordBus, DiscordEventSource
+from picklebot.channel.discord_channel import DiscordChannel, DiscordEventSource
 from picklebot.utils.config import DiscordConfig
 
 
 def test_discord_bus_platform_name():
-    """Test that DiscordBus has correct platform name."""
+    """Test that DiscordChannel has correct platform name."""
     config = DiscordConfig(bot_token="test_token")
-    bus = DiscordBus(config)
+    bus = DiscordChannel(config)
     assert bus.platform_name == "discord"
 
 
-class TestDiscordBusReply:
-    """Tests for DiscordBus.reply method."""
+class TestDiscordChannelReply:
+    """Tests for DiscordChannel.reply method."""
 
     @pytest.mark.anyio
     async def test_reply_sends_to_channel_id(self):
         """reply should send to source.channel_id."""
         config = DiscordConfig(bot_token="test-token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
 
         mock_client = MagicMock()
         mock_channel = MagicMock()
@@ -43,21 +43,21 @@ def _create_mock_discord_client():
     return mock_client
 
 
-class TestDiscordBusRunStop:
+class TestDiscordChannelRunStop:
     """Tests for run/stop behavior."""
 
     @pytest.mark.anyio
     async def test_run_stop_lifecycle(self):
-        """Test that DiscordBus can run and stop."""
+        """Test that DiscordChannel can run and stop."""
         config = DiscordConfig(bot_token="test_token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
         mock_client = _create_mock_discord_client()
 
         async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
-            "picklebot.messagebus.discord_bus.discord.Client", return_value=mock_client
+            "picklebot.channel.discord_channel.discord.Client", return_value=mock_client
         ):
             await bus.run(dummy_callback)
             await bus.stop()
@@ -69,32 +69,32 @@ class TestDiscordBusRunStop:
     async def test_run_raises_on_second_call(self):
         """Calling run twice should raise RuntimeError."""
         config = DiscordConfig(bot_token="test_token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
         mock_client = _create_mock_discord_client()
 
         async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
-            "picklebot.messagebus.discord_bus.discord.Client", return_value=mock_client
+            "picklebot.channel.discord_channel.discord.Client", return_value=mock_client
         ):
             await bus.run(dummy_callback)
 
-            with pytest.raises(RuntimeError, match="DiscordBus already running"):
+            with pytest.raises(RuntimeError, match="DiscordChannel already running"):
                 await bus.run(dummy_callback)
 
     @pytest.mark.anyio
     async def test_stop_is_idempotent(self):
         """Calling stop twice should be safe - second call is no-op."""
         config = DiscordConfig(bot_token="test_token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
         mock_client = _create_mock_discord_client()
 
         async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
-            "picklebot.messagebus.discord_bus.discord.Client", return_value=mock_client
+            "picklebot.channel.discord_channel.discord.Client", return_value=mock_client
         ):
             await bus.run(dummy_callback)
             await bus.stop()
@@ -106,7 +106,7 @@ class TestDiscordBusRunStop:
     async def test_stop_without_run_is_safe(self):
         """Calling stop without run should be safe - no-op."""
         config = DiscordConfig(bot_token="test_token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
 
         await bus.stop()  # Should not raise
 
@@ -114,14 +114,14 @@ class TestDiscordBusRunStop:
     async def test_can_rerun_after_stop(self):
         """Should be able to run again after stop."""
         config = DiscordConfig(bot_token="test_token")
-        bus = DiscordBus(config)
+        bus = DiscordChannel(config)
         mock_client = _create_mock_discord_client()
 
         async def dummy_callback(content: str, source: DiscordEventSource) -> None:
             pass
 
         with patch(
-            "picklebot.messagebus.discord_bus.discord.Client", return_value=mock_client
+            "picklebot.channel.discord_channel.discord.Client", return_value=mock_client
         ):
             # First cycle
             await bus.run(dummy_callback)

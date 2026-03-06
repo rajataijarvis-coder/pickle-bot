@@ -5,7 +5,7 @@ from .delivery_worker import DeliveryWorker
 from .websocket_worker import WebSocketWorker
 from .agent_worker import AgentWorker
 from .cron_worker import CronWorker
-from .messagebus_worker import MessageBusWorker
+from .channel_worker import ChannelWorker
 
 __all__ = [
     "Worker",
@@ -14,5 +14,5 @@ __all__ = [
     "WebSocketWorker",
     "AgentWorker",
     "CronWorker",
-    "MessageBusWorker",
+    "ChannelWorker",
 ]

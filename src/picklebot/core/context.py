@@ -11,7 +11,7 @@ from picklebot.core.prompt_builder import PromptBuilder
 from picklebot.core.routing import RoutingTable
 from picklebot.core.skill_loader import SkillLoader
 from picklebot.core.eventbus import EventBus
-from picklebot.messagebus.base import MessageBus
+from picklebot.channel.base import Channel
 from picklebot.utils.config import Config
 
 
@@ -24,13 +24,13 @@ class SharedContext:
     skill_loader: SkillLoader
     cron_loader: CronLoader
     command_registry: CommandRegistry
-    messagebus_buses: list[MessageBus[Any]]
+    channels: list[Channel[Any]]
     eventbus: EventBus
     routing_table: RoutingTable
     prompt_builder: PromptBuilder
 
     def __init__(
-        self, config: Config, buses: list[MessageBus[Any]] | None = None
+        self, config: Config, buses: list[Channel[Any]] | None = None
     ) -> None:
         self.config = config
         self.history_store = HistoryStore.from_config(config)
@@ -41,9 +41,9 @@ class SharedContext:
 
         # Use provided buses (CLI mode) or load from config (server mode)
         if buses is not None:
-            self.messagebus_buses = buses
+            self.channels = buses
         else:
-            self.messagebus_buses = MessageBus.from_config(config)
+            self.channels = Channel.from_config(config)
 
         self.eventbus = EventBus(self)
         self.routing_table = RoutingTable(self)

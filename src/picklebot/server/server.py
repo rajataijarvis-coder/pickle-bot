@@ -10,7 +10,7 @@ from .worker import Worker
 from .agent_worker import AgentWorker
 from .cron_worker import CronWorker
 from .delivery_worker import DeliveryWorker
-from .messagebus_worker import MessageBusWorker
+from .channel_worker import ChannelWorker
 from .websocket_worker import WebSocketWorker
 from picklebot.utils.config import ConfigReloader
 from picklebot.api import create_app
@@ -61,13 +61,13 @@ class Server:
             ws_worker,  # WebSocketWorker (SubscriberWorker)
         ]
 
-        if self.context.config.messagebus.enabled:
-            buses = self.context.messagebus_buses
+        if self.context.config.channels.enabled:
+            buses = self.context.channels
             if buses:
-                self.workers.append(MessageBusWorker(self.context))
-                logger.info(f"MessageBus enabled with {len(buses)} bus(es)")
+                self.workers.append(ChannelWorker(self.context))
+                logger.info(f"Channel enabled with {len(buses)} bus(es)")
             else:
-                logger.warning("MessageBus enabled but no buses configured")
+                logger.warning("Channel enabled but no buses configured")
 
         logger.info(f"Server setup complete with {len(self.workers)} core workers")
 

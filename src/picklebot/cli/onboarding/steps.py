@@ -230,8 +230,8 @@ class CopyDefaultAssetsStep(BaseStep):
         shutil.copytree(src, dst)
 
 
-class ConfigureMessageBusStep(BaseStep):
-    """Prompt user for MessageBus configuration."""
+class ConfigureChannelStep(BaseStep):
+    """Prompt user for Channel configuration."""
 
     def run(self, state: dict) -> bool:
         platforms = questionary.checkbox(
@@ -240,18 +240,18 @@ class ConfigureMessageBusStep(BaseStep):
         ).ask()
 
         if not platforms:
-            state["messagebus"] = {"enabled": False}
+            state["channels"] = {"enabled": False}
             return True
 
-        state["messagebus"] = {
+        state["channels"] = {
             "enabled": True,
         }
 
         if "telegram" in platforms:
-            state["messagebus"]["telegram"] = self._configure_telegram()
+            state["channels"]["telegram"] = self._configure_telegram()
 
         if "discord" in platforms:
-            state["messagebus"]["discord"] = self._configure_discord()
+            state["channels"]["discord"] = self._configure_discord()
 
         return True
 

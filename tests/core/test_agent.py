@@ -6,8 +6,8 @@ from picklebot.core.agent import Agent
 from picklebot.core.agent_loader import AgentDef
 from picklebot.core.context import SharedContext
 from picklebot.core.events import CronEventSource, CliEventSource
-from picklebot.messagebus.telegram_bus import TelegramEventSource
-from picklebot.utils.config import LLMConfig, MessageBusConfig, TelegramConfig
+from picklebot.channel.telegram_channel import TelegramEventSource
+from picklebot.utils.config import LLMConfig, ChannelConfig, TelegramConfig
 
 
 def test_agent_creation_with_new_structure(test_agent, test_agent_def, test_context):
@@ -113,7 +113,7 @@ def test_subagent_dispatch_registration(
 
 def _create_agent_with_messagebus(test_config) -> Agent:
     """Helper to create an agent with messagebus enabled."""
-    test_config.messagebus = MessageBusConfig(
+    test_config.channels = ChannelConfig(
         enabled=True,
         telegram=TelegramConfig(
             enabled=True,
@@ -161,19 +161,19 @@ class TestAgentNewSessionWithSource:
         from picklebot.core.history import HistoryStore
 
         context = MagicMock()
-        context.config.messagebus = MagicMock()
-        context.config.messagebus.enabled = True
-        context.config.messagebus.telegram = MagicMock()
-        context.config.messagebus.telegram.enabled = True
+        context.config.channels = MagicMock()
+        context.config.channels.enabled = True
+        context.config.channels.telegram = MagicMock()
+        context.config.channels.telegram.enabled = True
         context.config.websearch = None
         context.config.webread = None
         context.history_store = HistoryStore(tmp_path)
         context.skill_loader = MagicMock()
         context.skill_loader.list_skills.return_value = []
-        # Mock messagebus_buses for post_message_tool
+        # Mock channels for post_message_tool
         mock_bus = MagicMock()
         mock_bus.platform_name = "telegram"
-        context.messagebus_buses = [mock_bus]
+        context.channels = [mock_bus]
 
         return context
 

@@ -23,7 +23,7 @@ EventBus (pub/sub) -> Workers subscribe to events -> Process -> Publish new even
 - `EventBus` - Central pub/sub event distribution with persistence
 - `AgentWorker` - Subscribes to InboundEvent/DispatchEvent, runs agent chat
 - `CronWorker` - Emits InboundEvent on schedule
-- `MessageBusWorker` - Emits InboundEvent from platforms (Telegram, Discord)
+- `ChannelWorker` - Emits InboundEvent from platforms (Telegram, Discord)
 - `DeliveryWorker` - Subscribes to OutboundEvent, delivers to platforms
 - `WebSocketWorker` - Subscribes to events, streams to WebSocket clients
 
@@ -35,7 +35,7 @@ EventBus (pub/sub) -> Workers subscribe to events -> Process -> Publish new even
 
 **EventSource Types:**
 - `AgentEventSource`, `CronEventSource` (in core/events.py)
-- `CliEventSource`, `TelegramEventSource`, `DiscordEventSource` (in messagebus/)
+- `CliEventSource`, `TelegramEventSource`, `DiscordEventSource` (in channel/)
 
 **Key Files:**
 - `core/agent.py` - Agent orchestrator + AgentSession
@@ -45,7 +45,7 @@ EventBus (pub/sub) -> Workers subscribe to events -> Process -> Publish new even
 - `core/routing.py` - Routes sources to agents
 - `core/commands/` - Slash command system
 - `server/server.py` - Worker orchestration
-- `messagebus/` - Platform implementations (Telegram, Discord, CLI)
+- `channel/` - Platform implementations (Telegram, Discord, CLI)
 
 ## Key Conventions
 
@@ -72,8 +72,8 @@ src/picklebot/
 │   ├── agent_worker.py    # Agent execution
 │   ├── cron_worker.py     # Scheduled jobs
 │   ├── delivery_worker.py # Message delivery
-│   └── messagebus_worker.py # Platform ingestion
-├── messagebus/            # Platform implementations
+│   └── channel_worker.py # Platform ingestion
+├── channel/            # Platform implementations
 ├── provider/              # LLM, web search, web read
 ├── tools/                 # Agent tools
 ├── api/                   # HTTP API

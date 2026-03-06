@@ -1,17 +1,17 @@
-"""Tests for MessageBus abstract interface."""
+"""Tests for Channel abstract interface."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from typing import Any
 
-from picklebot.messagebus.base import MessageBus
-from picklebot.messagebus.telegram_bus import TelegramBus, TelegramEventSource
-from picklebot.messagebus.discord_bus import DiscordBus, DiscordEventSource
+from picklebot.channel.base import Channel
+from picklebot.channel.telegram_channel import TelegramChannel, TelegramEventSource
+from picklebot.channel.discord_channel import DiscordChannel, DiscordEventSource
 from picklebot.utils.config import (
     TelegramConfig,
     DiscordConfig,
-    MessageBusConfig,
+    ChannelConfig,
     Config,
     LLMConfig,
 )
@@ -41,7 +41,7 @@ def _create_mock_discord_client():
     return mock_client
 
 
-class MockBus(MessageBus[Any]):
+class MockBus(Channel[Any]):
     """Mock implementation for testing."""
 
     @property
@@ -83,7 +83,7 @@ class MockBus(MessageBus[Any]):
         ),
     ],
 )
-class TestMessageBusIsAllowed:
+class TestChannelIsAllowed:
     """Shared tests for is_allowed across all bus implementations."""
 
     def test_is_allowed_returns_true_for_whitelisted_user(
@@ -92,9 +92,9 @@ class TestMessageBusIsAllowed:
         """is_allowed should return True for whitelisted user."""
         config = config_factory()
         if bus_type == "telegram":
-            bus = TelegramBus(config)
+            bus = TelegramChannel(config)
         else:
-            bus = DiscordBus(config)
+            bus = DiscordChannel(config)
 
         ctx = context_factory("whitelisted")
         assert bus.is_allowed(ctx) is True
@@ -105,9 +105,9 @@ class TestMessageBusIsAllowed:
         """is_allowed should return False for non-whitelisted user."""
         config = config_factory()
         if bus_type == "telegram":
-            bus = TelegramBus(config)
+            bus = TelegramChannel(config)
         else:
-            bus = DiscordBus(config)
+            bus = DiscordChannel(config)
 
         ctx = context_factory("unknown")
         assert bus.is_allowed(ctx) is False
@@ -118,17 +118,17 @@ class TestMessageBusIsAllowed:
         """is_allowed should return True when whitelist is empty."""
         if bus_type == "telegram":
             config = TelegramConfig(bot_token="test-token", allowed_user_ids=[])
-            bus = TelegramBus(config)
+            bus = TelegramChannel(config)
         else:
             config = DiscordConfig(bot_token="test-token", allowed_user_ids=[])
-            bus = DiscordBus(config)
+            bus = DiscordChannel(config)
 
         ctx = context_factory("anyone")
         assert bus.is_allowed(ctx) is True
 
 
 def test_messagebus_has_platform_name():
-    """Test that MessageBus has platform_name property."""
+    """Test that Channel has platform_name property."""
     bus = MockBus()
     assert bus.platform_name == "mock"
 
@@ -139,9 +139,9 @@ def test_messagebus_from_config_empty(tmp_path):
         workspace=tmp_path,
         llm=LLMConfig(provider="test", model="test", api_key="test"),
         default_agent="test",
-        messagebus=MessageBusConfig(enabled=False),
+        messagebus=ChannelConfig(enabled=False),
     )
-    buses = MessageBus.from_config(config)
+    buses = Channel.from_config(config)
     assert buses == []
 
 
@@ -151,12 +151,12 @@ def test_messagebus_from_config_disabled_platform(tmp_path):
         workspace=tmp_path,
         llm=LLMConfig(provider="test", model="test", api_key="test"),
         default_agent="test",
-        messagebus=MessageBusConfig(
+        messagebus=ChannelConfig(
             enabled=True,
             telegram=TelegramConfig(enabled=False, bot_token="test_token"),
         ),
     )
-    buses = MessageBus.from_config(config)
+    buses = Channel.from_config(config)
 
     assert len(buses) == 0
 
@@ -178,7 +178,7 @@ class TestEventSourceDataclasses:
 
 
 @pytest.mark.parametrize("bus_type", ["telegram", "discord"])
-class TestMessageBusLifecycle:
+class TestChannelLifecycle:
     """Shared lifecycle tests for all bus implementations."""
 
     @pytest.mark.anyio
@@ -186,9 +186,9 @@ class TestMessageBusLifecycle:
         """Calling stop without run should be safe - no-op."""
         if bus_type == "telegram":
             config = TelegramConfig(bot_token="test_token")
-            bus = TelegramBus(config)
+            bus = TelegramChannel(config)
         else:
             config = DiscordConfig(bot_token="test_token")
-            bus = DiscordBus(config)
+            bus = DiscordChannel(config)
 
         await bus.stop()  # Should not raise

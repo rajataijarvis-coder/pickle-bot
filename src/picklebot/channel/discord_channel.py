@@ -1,4 +1,4 @@
-"""Discord message bus implementation."""
+"""Discord channel implementation."""
 
 import asyncio
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import Callable, Awaitable
 import discord
 
 from picklebot.core.events import EventSource
-from picklebot.messagebus.base import MessageBus
+from picklebot.channel.base import Channel
 from picklebot.utils.config import DiscordConfig
 
 logger = logging.getLogger(__name__)
@@ -35,14 +35,14 @@ class DiscordEventSource(EventSource):
         return "discord"
 
 
-class DiscordBus(MessageBus[DiscordEventSource]):
+class DiscordChannel(Channel[DiscordEventSource]):
     """Discord platform implementation using discord.py."""
 
     platform_name = "discord"
 
     def __init__(self, config: DiscordConfig):
         """
-        Initialize DiscordBus.
+        Initialize DiscordChannel.
 
         Args:
             config: Discord configuration
@@ -54,13 +54,13 @@ class DiscordBus(MessageBus[DiscordEventSource]):
     async def run(
         self, on_message: Callable[[str, DiscordEventSource], Awaitable[None]]
     ) -> None:
-        """Run the Discord message bus. Blocks until stop() is called.
+        """Run the Discord channel. Blocks until stop() is called.
 
         Raises:
             RuntimeError: If run() is called when already running.
         """
         if self._running_task is not None:
-            raise RuntimeError("DiscordBus already running")
+            raise RuntimeError("DiscordChannel already running")
 
         logger.info(f"Message bus enabled with platform: {self.platform_name}")
 
@@ -110,7 +110,7 @@ class DiscordBus(MessageBus[DiscordEventSource]):
             self.client.start(self.config.bot_token)
         )
 
-        logger.info("DiscordBus started")
+        logger.info("DiscordChannel started")
         await self._running_task
 
     def is_allowed(self, source: DiscordEventSource) -> bool:
@@ -122,7 +122,7 @@ class DiscordBus(MessageBus[DiscordEventSource]):
     async def reply(self, content: str, source: DiscordEventSource) -> None:
         """Reply to incoming message in the same channel."""
         if not self.client:
-            raise RuntimeError("DiscordBus not started")
+            raise RuntimeError("DiscordChannel not started")
 
         try:
             channel = self.client.get_channel(int(source.channel_id))
@@ -140,7 +140,7 @@ class DiscordBus(MessageBus[DiscordEventSource]):
         """Stop Discord bot and cleanup."""
         # Idempotent: skip if not running
         if self.client is None:
-            logger.debug("DiscordBus not running, skipping stop")
+            logger.debug("DiscordChannel not running, skipping stop")
             return
 
         await self.client.close()
@@ -156,4 +156,4 @@ class DiscordBus(MessageBus[DiscordEventSource]):
 
         self.client = None
         self._running_task = None
-        logger.info("DiscordBus stopped")
+        logger.info("DiscordChannel stopped")

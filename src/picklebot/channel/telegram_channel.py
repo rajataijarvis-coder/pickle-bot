@@ -1,4 +1,4 @@
-"""Telegram message bus implementation."""
+"""Telegram channel implementation."""
 
 import asyncio
 from dataclasses import dataclass
@@ -9,7 +9,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
 from picklebot.core.events import EventSource
-from picklebot.messagebus.base import MessageBus
+from picklebot.channel.base import Channel
 from picklebot.utils.config import TelegramConfig
 
 logger = logging.getLogger(__name__)
@@ -36,14 +36,14 @@ class TelegramEventSource(EventSource):
         return "telegram"
 
 
-class TelegramBus(MessageBus[TelegramEventSource]):
+class TelegramChannel(Channel[TelegramEventSource]):
     """Telegram platform implementation using python-telegram-bot."""
 
     platform_name = "telegram"
 
     def __init__(self, config: TelegramConfig):
         """
-        Initialize TelegramBus.
+        Initialize TelegramChannel.
 
         Args:
             config: Telegram configuration
@@ -62,13 +62,13 @@ class TelegramBus(MessageBus[TelegramEventSource]):
     async def run(
         self, on_message: Callable[[str, TelegramEventSource], Awaitable[None]]
     ) -> None:
-        """Run the Telegram message bus. Blocks until stop() is called.
+        """Run the Telegram channel. Blocks until stop() is called.
 
         Raises:
             RuntimeError: If run() is called when already running.
         """
         if self.application is not None:
-            raise RuntimeError("TelegramBus already running")
+            raise RuntimeError("TelegramChannel already running")
 
         logger.info(f"Message bus enabled with platform: {self.platform_name}")
         self.application = Application.builder().token(self.config.bot_token).build()
@@ -107,7 +107,7 @@ class TelegramBus(MessageBus[TelegramEventSource]):
         if self.application.updater:
             await self.application.updater.start_polling()
 
-        logger.info("TelegramBus started")
+        logger.info("TelegramChannel started")
 
         # Create the running task that monitors for stop
         async def run_until_stopped():
@@ -128,7 +128,7 @@ class TelegramBus(MessageBus[TelegramEventSource]):
     async def reply(self, content: str, source: TelegramEventSource) -> None:
         """Reply to incoming message."""
         if not self.application:
-            raise RuntimeError("TelegramBus not started")
+            raise RuntimeError("TelegramChannel not started")
 
         try:
             await self.application.bot.send_message(
@@ -143,7 +143,7 @@ class TelegramBus(MessageBus[TelegramEventSource]):
         """Stop Telegram bot and cleanup."""
         # Idempotent: skip if not running
         if self.application is None:
-            logger.debug("TelegramBus not running, skipping stop")
+            logger.debug("TelegramChannel not running, skipping stop")
             return
 
         # Signal the running task to stop
@@ -167,4 +167,4 @@ class TelegramBus(MessageBus[TelegramEventSource]):
         self.application = None
         self._running_task = None
         self._stop_event = None
-        logger.info("TelegramBus stopped")
+        logger.info("TelegramChannel stopped")

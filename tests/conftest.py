@@ -84,12 +84,12 @@ def mock_context(tmp_path: Path) -> MagicMock:
 
     context = MagicMock()
     context.config = MagicMock()
-    context.config.messagebus = MagicMock()
-    context.config.messagebus.telegram = None
-    context.config.messagebus.discord = None
+    context.config.channels = MagicMock()
+    context.config.channels.telegram = None
+    context.config.channels.discord = None
     context.config.event_path = tmp_path / ".events"
     context.eventbus = EventBus(context)
-    context.messagebus_buses = []
+    context.channels = []
     context.history_store = MagicMock()
     context.history_store.list_sessions = MagicMock(return_value=[])
     return context

@@ -90,16 +90,16 @@ def test_chat_loop_processes_user_input_and_displays_response(
 
 
 def test_chat_loop_has_no_messagebus_worker(test_config_with_agent: Config):
-    """Test that ChatLoop doesn't use MessageBusWorker."""
+    """Test that ChatLoop doesn't use ChannelWorker."""
     chat_loop = ChatLoop(test_config_with_agent)
 
     # Check workers list
     worker_types = [type(worker).__name__ for worker in chat_loop.workers]
 
-    # Should have EventBus, AgentWorker, but NOT MessageBusWorker or DeliveryWorker
+    # Should have EventBus, AgentWorker, but NOT ChannelWorker or DeliveryWorker
     assert "EventBus" in worker_types
     assert "AgentWorker" in worker_types
-    assert "MessageBusWorker" not in worker_types
+    assert "ChannelWorker" not in worker_types
     assert "DeliveryWorker" not in worker_types
 
 

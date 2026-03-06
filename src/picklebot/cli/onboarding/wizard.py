@@ -10,7 +10,7 @@ from picklebot.cli.onboarding.steps import (
     CheckWorkspaceStep,
     ConfigureExtraFunctionalityStep,
     ConfigureLLMStep,
-    ConfigureMessageBusStep,
+    ConfigureChannelStep,
     CopyDefaultAssetsStep,
     SaveConfigStep,
     SetupWorkspaceStep,
@@ -29,7 +29,7 @@ class OnboardingWizard:
         SetupWorkspaceStep,
         ConfigureLLMStep,
         ConfigureExtraFunctionalityStep,
-        ConfigureMessageBusStep,
+        ConfigureChannelStep,
         CopyDefaultAssetsStep,
         SaveConfigStep,
     ]

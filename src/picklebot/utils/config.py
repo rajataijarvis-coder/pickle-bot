@@ -57,8 +57,8 @@ class ApiConfig(BaseModel):
     port: int = Field(default=8000, gt=0, lt=65536)
 
 
-class MessageBusConfig(BaseModel):
-    """Message bus configuration."""
+class ChannelConfig(BaseModel):
+    """Channel configuration."""
 
     enabled: bool = False
     telegram: TelegramConfig | None = None
@@ -105,7 +105,7 @@ class Config(BaseModel):
     event_path: Path = Field(default=Path(".event"))
     crons_path: Path = Field(default=Path("crons"))
     memories_path: Path = Field(default=Path("memories"))
-    messagebus: MessageBusConfig = Field(default_factory=MessageBusConfig)
+    channels: ChannelConfig = Field(default_factory=ChannelConfig)
     api: ApiConfig | None = None
     websearch: BraveWebSearchConfig | None = None
     webread: Crawl4AIWebReadConfig | None = None
