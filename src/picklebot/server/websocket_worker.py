@@ -10,8 +10,6 @@ from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from pydantic import ValidationError
 
-from picklebot.core.agent import Agent
-
 from .worker import SubscriberWorker
 from picklebot.core.events import (
     Event,
@@ -118,7 +116,9 @@ class WebSocketWorker(SubscriberWorker):
         if agent_id is None:
             agent_id = self.context.routing_table.resolve(str(source))
 
-        session_id = self._get_or_create_session_id(source, agent_id)
+        session_id = self.context.routing_table.get_or_create_session_id(
+            source, agent_id
+        )
 
         return InboundEvent(
             session_id=session_id,
@@ -127,24 +127,6 @@ class WebSocketWorker(SubscriberWorker):
             content=msg.content,
             timestamp=time.time(),
         )
-
-    def _get_or_create_session_id(
-        self, source: WebSocketEventSource, agent_id: str
-    ) -> str:
-        """Get existing session_id from source cache, or create new session."""
-
-        source_info = self.context.config.sources.get(str(source))
-        if source_info:
-            return source_info["session_id"]
-
-        agent_def = self.context.agent_loader.load(agent_id)
-        agent = Agent(agent_def, self.context)
-        session = agent.new_session(source)
-
-        self.context.config.set_runtime(
-            f"sources.{str(source)}", {"session_id": session.session_id}
-        )
-        return session.session_id
 
     async def handle_event(self, event: Event) -> None:
         """Handle EventBus event by broadcasting to WebSocket clients.

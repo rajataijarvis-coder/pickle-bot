@@ -1,7 +1,7 @@
 """Tests for WebSocketWorker."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 from picklebot.server.websocket_worker import WebSocketWorker
 from picklebot.api.schemas import WebSocketMessage
 from picklebot.core.events import WebSocketEventSource, InboundEvent
@@ -22,6 +22,9 @@ class TestWebSocketWorker:
         context.config.set_runtime = Mock()
         context.routing_table = Mock()
         context.routing_table.resolve = Mock(return_value="pickle")
+        context.routing_table.get_or_create_session_id = Mock(
+            return_value="session-abc"
+        )
         context.agent_loader = Mock()
         return context
 
@@ -68,11 +71,7 @@ class TestWebSocketWorker:
         """Test normalizing message with explicit agent_id."""
         msg = WebSocketMessage(source="user-123", content="Hello!", agent_id="pickle")
 
-        # Mock _get_or_create_session_id to avoid Agent creation
-        with patch.object(
-            worker, "_get_or_create_session_id", return_value="session-abc"
-        ):
-            event = worker._normalize_message(msg)
+        event = worker._normalize_message(msg)
 
         assert isinstance(event, InboundEvent)
         assert event.agent_id == "pickle"
@@ -80,6 +79,8 @@ class TestWebSocketWorker:
         assert isinstance(event.source, WebSocketEventSource)
         assert event.source.user_id == "user-123"
         assert event.session_id == "session-abc"
+        # Verify routing_table method was called
+        worker.context.routing_table.get_or_create_session_id.assert_called_once()
 
     def test_normalize_message_without_agent_id(self, worker, mock_context):
         """Test normalizing message without agent_id (uses routing)."""
@@ -87,14 +88,15 @@ class TestWebSocketWorker:
 
         # Mock routing to return specific agent
         mock_context.routing_table.resolve = Mock(return_value="cookie")
+        mock_context.routing_table.get_or_create_session_id = Mock(
+            return_value="session-xyz"
+        )
 
-        # Mock _get_or_create_session_id to avoid Agent creation
-        with patch.object(
-            worker, "_get_or_create_session_id", return_value="session-xyz"
-        ):
-            event = worker._normalize_message(msg)
+        event = worker._normalize_message(msg)
 
         assert event.agent_id == "cookie"
+        assert event.session_id == "session-xyz"
         mock_context.routing_table.resolve.assert_called_once_with(
             "platform-ws:user-456"
         )
+        mock_context.routing_table.get_or_create_session_id.assert_called_once()
