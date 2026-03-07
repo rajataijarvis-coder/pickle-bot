@@ -53,7 +53,13 @@ class AgentWorker(SubscriberWorker):
 
     async def dispatch_event(self, event: ProcessableEvent) -> None:
         """Create executor task for typed event."""
-        agent_id = event.agent_id
+        # Get agent_id from session (single source of truth)
+        session_info = self.context.history_store.get_session_info(event.session_id)
+        if not session_info:
+            logger.error(f"Session not found: {event.session_id}")
+            return
+
+        agent_id = session_info.agent_id
 
         try:
             agent_def = self.context.agent_loader.load(agent_id)
@@ -143,7 +149,6 @@ class AgentWorker(SubscriberWorker):
         if isinstance(event, DispatchEvent):
             return DispatchResultEvent(
                 session_id=event.session_id,
-                agent_id=agent_id,
                 source=AgentEventSource(agent_id),
                 content=content,
                 error=str(error) if error else None,
@@ -151,7 +156,6 @@ class AgentWorker(SubscriberWorker):
         else:
             return OutboundEvent(
                 session_id=event.session_id,
-                agent_id=agent_id,
                 source=AgentEventSource(agent_id),
                 content=content,
                 error=str(error) if error else None,

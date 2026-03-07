@@ -93,13 +93,11 @@ class TestSharedContextEventBus:
         # Create test events
         inbound = InboundEvent(
             session_id="test",
-            agent_id="test",
             content="inbound",
             source=TelegramEventSource(user_id="user1", chat_id="chat1"),
         )
         outbound = OutboundEvent(
             session_id="test",
-            agent_id="test",
             content="outbound",
             source=AgentEventSource(agent_id="test"),
         )
