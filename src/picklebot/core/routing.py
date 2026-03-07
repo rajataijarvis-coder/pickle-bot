@@ -76,22 +76,27 @@ class RoutingTable:
                 return binding.agent
         return self._context.config.default_agent
 
-    def get_or_create_session_id(self, source: EventSource, agent_id: str) -> str:
-        """Get existing session_id from source cache, or create new session.
+    def get_or_create_session_id(self, source: EventSource) -> str:
+        """Get existing or create new session_id for source.
+
+        For existing sessions, returns cached session_id (session affinity).
+        For new sessions, resolves agent from routing table.
 
         Args:
             source: Typed EventSource object
-            agent_id: Agent identifier to use for session creation
 
         Returns:
             session_id: Existing or newly created session identifier
         """
         source_str = str(source)
 
-        # Check cache first
+        # Check cache first (existing session)
         source_info = self._context.config.sources.get(source_str)
         if source_info:
             return source_info["session_id"]
+
+        # New session: resolve agent from routing
+        agent_id = self.resolve(source_str)
 
         # Create new session
         agent_def = self._context.agent_loader.load(agent_id)
