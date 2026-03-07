@@ -54,7 +54,12 @@ class TestCommandProperties:
             (ContextCommand, "context", [], "Show session context information"),
             (ClearCommand, "clear", [], "Clear conversation and start fresh"),
             (SessionCommand, "session", [], "Show current session details"),
-            (RouteCommand, "route", [], "Create a routing binding (persists to config)"),
+            (
+                RouteCommand,
+                "route",
+                [],
+                "Create a routing binding (persists to config)",
+            ),
             (BindingsCommand, "bindings", [], "Show all routing bindings"),
         ],
     )
