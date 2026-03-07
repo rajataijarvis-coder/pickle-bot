@@ -1,5 +1,6 @@
 """Built-in slash command handlers."""
 
+import re
 from typing import TYPE_CHECKING
 
 from picklebot.core.commands.base import Command
@@ -62,9 +63,7 @@ class SessionCommand(Command):
     description = "Show current session details"
 
     def execute(self, args: str, session: "AgentSession") -> str:
-        info = session.shared_context.history_store.get_session_info(
-            session.session_id
-        )
+        info = session.shared_context.history_store.get_session_info(session.session_id)
 
         # Handle case where session not found in index
         created_str = info.created_at if info else "Unknown"
@@ -199,3 +198,34 @@ class CronsCommand(Command):
             f"\n---\n\n**CRON.md:**\n```\n{cron.prompt}\n```",
         ]
         return "\n".join(lines)
+
+
+class RouteCommand(Command):
+    """Create a routing binding."""
+
+    name = "route"
+    description = "Create a routing binding (persists to config)"
+
+    def execute(self, args: str, session: "AgentSession") -> str:
+        parts = args.strip().split(None, 1)
+        if len(parts) != 2:
+            return "**Usage:** `/route <source_pattern> <agent_id>`\n\nExample: `/route platform-telegram:.* pickle`"
+
+        pattern, agent_id = parts
+
+        # Validate regex pattern
+        try:
+            re.compile(f"^{pattern}$")
+        except re.error as e:
+            return f"✗ Invalid regex pattern: {e}"
+
+        # Verify agent exists
+        try:
+            session.shared_context.agent_loader.load(agent_id)
+        except ValueError:
+            return f"✗ Agent `{agent_id}` not found."
+
+        # Create and persist binding
+        session.shared_context.routing_table.persist_binding(pattern, agent_id)
+
+        return f"✓ Route bound: `{pattern}` → `{agent_id}`"

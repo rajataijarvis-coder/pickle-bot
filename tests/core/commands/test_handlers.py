@@ -13,6 +13,7 @@ from picklebot.core.commands.handlers import (
     ContextCommand,
     ClearCommand,
     SessionCommand,
+    RouteCommand,
 )
 from picklebot.utils.def_loader import DefNotFoundError
 
@@ -164,7 +165,9 @@ class TestCommandExecute:
         from picklebot.utils.def_loader import DefNotFoundError
 
         mock_session.shared_context = mock_context
-        mock_context.skill_loader.load_skill.side_effect = DefNotFoundError("skill", "nonexistent")
+        mock_context.skill_loader.load_skill.side_effect = DefNotFoundError(
+            "skill", "nonexistent"
+        )
 
         cmd = SkillsCommand()
         result = cmd.execute("nonexistent", mock_session)
@@ -207,7 +210,9 @@ class TestCommandExecute:
     def test_crons_show_detail_not_found(self, mock_session, mock_context):
         """Test crons command handles non-existent cron."""
         mock_session.shared_context = mock_context
-        mock_context.cron_loader.load.side_effect = DefNotFoundError("cron", "nonexistent")
+        mock_context.cron_loader.load.side_effect = DefNotFoundError(
+            "cron", "nonexistent"
+        )
 
         cmd = CronsCommand()
         result = cmd.execute("nonexistent", mock_session)
@@ -340,3 +345,52 @@ class TestCommandExecute:
         assert "**Created:**" in result
         assert "**Messages:**" in result
         assert "**Source:**" in result
+
+
+class TestRouteCommand:
+    """Tests for RouteCommand."""
+
+    def test_route_creates_binding(self, mock_session, mock_context):
+        """Test route command creates a binding."""
+        mock_session.shared_context = mock_context
+        mock_context.agent_loader.load.return_value = MagicMock()
+        mock_context.config.routing = {"bindings": []}
+        mock_context.config.sources = {}
+
+        cmd = RouteCommand()
+        result = cmd.execute("platform-telegram:.* pickle", mock_session)
+
+        assert "✓ Route bound" in result
+        assert "platform-telegram:.*" in result
+        assert "pickle" in result
+        mock_context.routing_table.persist_binding.assert_called_once_with(
+            "platform-telegram:.*", "pickle"
+        )
+
+    def test_route_missing_args(self, mock_session, mock_context):
+        """Test route command with missing args."""
+        mock_session.shared_context = mock_context
+
+        cmd = RouteCommand()
+        result = cmd.execute("", mock_session)
+
+        assert "Usage:" in result
+
+    def test_route_agent_not_found(self, mock_session, mock_context):
+        """Test route command with invalid agent."""
+        mock_session.shared_context = mock_context
+        mock_context.agent_loader.load.side_effect = ValueError("not found")
+
+        cmd = RouteCommand()
+        result = cmd.execute("platform-telegram:.* nonexistent", mock_session)
+
+        assert "not found" in result
+
+    def test_route_invalid_regex(self, mock_session, mock_context):
+        """Test route command with invalid regex pattern."""
+        mock_session.shared_context = mock_context
+
+        cmd = RouteCommand()
+        result = cmd.execute("[invalid pickle", mock_session)
+
+        assert "Invalid regex pattern" in result

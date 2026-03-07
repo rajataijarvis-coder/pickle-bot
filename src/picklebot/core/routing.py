@@ -125,6 +125,26 @@ class RoutingTable:
         # Clear cache to force reload
         self._bindings = None
 
+    def persist_binding(self, source_pattern: str, agent_id: str) -> None:
+        """
+        Add and persist a routing binding to config.user.yaml.
+
+        Args:
+            source_pattern: Source pattern to match
+            agent_id: Agent to route to
+        """
+        # Get existing bindings from user config
+        bindings = self._context.config.routing.get("bindings", [])
+
+        # Add new binding
+        bindings.append({"agent": agent_id, "value": source_pattern})
+
+        # Persist to config.user.yaml
+        self._context.config.set_user("routing.bindings", bindings)
+
+        # Clear cache to force reload
+        self._bindings = None
+
     def clear_session_cache(self, source_str: str) -> None:
         """
         Clear session cache for a source.
