@@ -14,6 +14,7 @@ from picklebot.core.commands.handlers import (
     ClearCommand,
     SessionCommand,
     RouteCommand,
+    BindingsCommand,
 )
 from picklebot.utils.def_loader import DefNotFoundError
 
@@ -394,3 +395,36 @@ class TestRouteCommand:
         result = cmd.execute("[invalid pickle", mock_session)
 
         assert "Invalid regex pattern" in result
+
+
+class TestBindingsCommand:
+    """Tests for BindingsCommand."""
+
+    def test_bindings_shows_all(self, mock_session, mock_context):
+        """Test bindings command shows all bindings."""
+        mock_session.shared_context = mock_context
+        mock_context.config.routing = {
+            "bindings": [
+                {"agent": "pickle", "value": "platform-telegram:.*"},
+                {"agent": "cookie", "value": "platform-discord:.*"},
+            ]
+        }
+
+        cmd = BindingsCommand()
+        result = cmd.execute("", mock_session)
+
+        assert "**Routing Bindings:**" in result
+        assert "platform-telegram:.*" in result
+        assert "pickle" in result
+        assert "platform-discord:.*" in result
+        assert "cookie" in result
+
+    def test_bindings_empty(self, mock_session, mock_context):
+        """Test bindings command with no bindings."""
+        mock_session.shared_context = mock_context
+        mock_context.config.routing = {"bindings": []}
+
+        cmd = BindingsCommand()
+        result = cmd.execute("", mock_session)
+
+        assert "No routing bindings configured" in result

@@ -229,3 +229,22 @@ class RouteCommand(Command):
         session.shared_context.routing_table.persist_binding(pattern, agent_id)
 
         return f"✓ Route bound: `{pattern}` → `{agent_id}`"
+
+
+class BindingsCommand(Command):
+    """Show all routing bindings."""
+
+    name = "bindings"
+    description = "Show all routing bindings"
+
+    def execute(self, args: str, session: "AgentSession") -> str:
+        bindings = session.shared_context.config.routing.get("bindings", [])
+
+        if not bindings:
+            return "No routing bindings configured."
+
+        lines = ["**Routing Bindings:**"]
+        for binding in bindings:
+            lines.append(f"- `{binding['value']}` → `{binding['agent']}`")
+
+        return "\n".join(lines)
