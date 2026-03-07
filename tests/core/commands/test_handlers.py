@@ -169,6 +169,11 @@ class TestCommandExecute:
         assert "**Agent:** `current-agent`" in result
         assert "**Name:** Current Agent" in result
         assert "**Description:** Current agent desc" in result
+        assert "**LLM:** test-model" in result
+        assert "**AGENT.md:**" in result
+        assert "You are current." in result
+        assert "**SOUL.md:**" in result
+        assert "Be friendly." in result
         mock_context.agent_loader.load.assert_called_once_with("current-agent")
 
     def test_agent_show_detail_not_found(self, mock_session, mock_context):
