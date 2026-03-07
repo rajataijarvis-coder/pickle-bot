@@ -80,7 +80,7 @@ class TestCommandRegistryWithBuiltins:
         """Test with_builtins creates registry with builtin commands."""
         registry = CommandRegistry.with_builtins()
 
-        # Should have all 8 commands
+        # Should have all 10 commands
         names = {cmd.name for cmd in registry.list_commands()}
         assert names == {
             "help",
@@ -91,6 +91,8 @@ class TestCommandRegistryWithBuiltins:
             "context",
             "clear",
             "session",
+            "route",
+            "bindings",
         }
 
     def test_with_builtins_has_aliases(self):

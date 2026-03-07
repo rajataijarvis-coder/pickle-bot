@@ -90,6 +90,8 @@ class CommandRegistry:
             ContextCommand,
             ClearCommand,
             SessionCommand,
+            RouteCommand,
+            BindingsCommand,
         )
 
         registry = cls()
@@ -101,4 +103,6 @@ class CommandRegistry:
         registry.register(ContextCommand())
         registry.register(ClearCommand())
         registry.register(SessionCommand())
+        registry.register(RouteCommand())
+        registry.register(BindingsCommand())
         return registry
