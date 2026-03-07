@@ -166,9 +166,11 @@ Commands for managing conversations and agents. All commands start with `/`.
 | Command | Description |
 |---------|-------------|
 | `/help` or `/?` | Show available commands |
-| `/agent [<id>]` | List agents or switch to different agent |
-| `/skills` | List all skills |
-| `/crons` | List all cron jobs |
+| `/agent [<id>]` | List agents or show agent details |
+| `/skills [<id>]` | List skills or show skill details |
+| `/crons [<id>]` | List cron jobs or show cron details |
+| `/bindings` | Show all routing bindings |
+| `/route <pattern> <agent_id>` | Create a routing binding (persists) |
 | `/compact` | Trigger manual context compaction |
 | `/context` | Show session context information |
 | `/clear` | Clear conversation and start fresh |
@@ -177,19 +179,25 @@ Commands for managing conversations and agents. All commands start with `/`.
 **Examples:**
 
 ```bash
-# Switch to cookie agent
-/agent cookie
+# List all agents
+/agent
 
-# Check session info
-/context
+# Show specific agent details
+/agent pickle
+
+# Create a routing binding
+/route platform-telegram:.* pickle
+
+# View all bindings
+/bindings
 
 # Clear conversation
 /clear
 ```
 
-**Agent Switching:**
+**Routing Bindings:**
 
-The `/agent <id>` command updates routing for your channel and starts a fresh conversation with the new agent. Previous conversation history is preserved in the old session.
+The `/route` command creates a persistent binding that routes messages matching a source pattern to a specific agent. Bindings are saved to `config.user.yaml` and survive server restarts.
 
 ## HTTP API
 
