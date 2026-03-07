@@ -14,6 +14,7 @@ from picklebot.core.commands.handlers import (
     ClearCommand,
     SessionCommand,
 )
+from picklebot.utils.def_loader import DefNotFoundError
 
 
 @pytest.fixture
@@ -206,7 +207,7 @@ class TestCommandExecute:
     def test_crons_show_detail_not_found(self, mock_session, mock_context):
         """Test crons command handles non-existent cron."""
         mock_session.shared_context = mock_context
-        mock_context.cron_loader.load.side_effect = ValueError("not found")
+        mock_context.cron_loader.load.side_effect = DefNotFoundError("cron", "nonexistent")
 
         cmd = CronsCommand()
         result = cmd.execute("nonexistent", mock_session)

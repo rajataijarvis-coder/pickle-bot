@@ -188,7 +188,7 @@ class CronsCommand(Command):
         cron_id = args.strip()
         try:
             cron = session.shared_context.cron_loader.load(cron_id)
-        except Exception:
+        except DefNotFoundError:
             return f"✗ Cron `{cron_id}` not found."
 
         lines = [
