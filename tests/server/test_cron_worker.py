@@ -96,7 +96,8 @@ async def test_cron_worker_dispatches_due_job(test_context, test_agent_def):
         event = published_events[0]
         assert isinstance(event, DispatchEvent)
         assert event.content == "Test prompt from cron"
-        assert event.agent_id == "test-agent"
+        # Verify DispatchEvent does not have agent_id (removed from Event base class)
+        assert not hasattr(event, "agent_id")
     finally:
         eventbus_task.cancel()
         try:
