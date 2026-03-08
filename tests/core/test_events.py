@@ -1,6 +1,5 @@
 """Tests for Event classes after agent_id removal."""
-import pytest
-import time
+
 from picklebot.core.events import (
     Event,
     InboundEvent,

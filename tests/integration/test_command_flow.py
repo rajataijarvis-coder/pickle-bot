@@ -2,7 +2,6 @@
 
 import asyncio
 
-import pytest
 
 from tests.helpers import create_test_agent
 

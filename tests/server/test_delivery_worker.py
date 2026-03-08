@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from picklebot.server.delivery_worker import (
     DeliveryWorker,

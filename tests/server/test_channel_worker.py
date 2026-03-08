@@ -7,7 +7,7 @@ from unittest.mock import patch, AsyncMock, MagicMock, Mock
 from picklebot.server.channel_worker import ChannelWorker
 from picklebot.core.commands import CommandRegistry
 from picklebot.core.context import SharedContext
-from picklebot.core.events import EventSource, InboundEvent
+from picklebot.core.events import InboundEvent
 from picklebot.channel.telegram_channel import TelegramEventSource
 from picklebot.channel.discord_channel import DiscordEventSource
 from picklebot.core.events import CliEventSource
@@ -682,7 +682,7 @@ async def test_callback_creates_inbound_event_without_agent_id(test_context, tmp
     """ChannelWorker callback should create InboundEvent without agent_id."""
     from picklebot.server.channel_worker import ChannelWorker
     from picklebot.core.events import InboundEvent, CliEventSource
-    from unittest.mock import AsyncMock, patch, Mock
+    from unittest.mock import patch, Mock
 
     # Create test agent
     agents_dir = tmp_path / "agents"
@@ -706,6 +706,7 @@ You are a test assistant.
 
     # Capture published events
     published_events = []
+
     async def capture_event(event):
         published_events.append(event)
 

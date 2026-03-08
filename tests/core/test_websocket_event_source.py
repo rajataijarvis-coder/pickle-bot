@@ -7,18 +7,21 @@ from picklebot.core.events import WebSocketEventSource
 class TestWebSocketEventSource:
     """Parametrized tests for WebSocketEventSource."""
 
-    @pytest.mark.parametrize("user_id,expected_str,type_props", [
-        (
-            "user-123",
-            "platform-ws:user-123",
-            {"is_platform": True, "is_agent": False, "is_cron": False},
-        ),
-        (
-            "user:with:colons",
-            "platform-ws:user:with:colons",
-            {"is_platform": True, "is_agent": False, "is_cron": False},
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "user_id,expected_str,type_props",
+        [
+            (
+                "user-123",
+                "platform-ws:user-123",
+                {"is_platform": True, "is_agent": False, "is_cron": False},
+            ),
+            (
+                "user:with:colons",
+                "platform-ws:user:with:colons",
+                {"is_platform": True, "is_agent": False, "is_cron": False},
+            ),
+        ],
+    )
     def test_source_roundtrip(self, user_id, expected_str, type_props):
         """Source should serialize/deserialize and have correct type properties."""
         # Create
@@ -35,11 +38,14 @@ class TestWebSocketEventSource:
         for prop, expected in type_props.items():
             assert getattr(source, prop) == expected
 
-    @pytest.mark.parametrize("invalid_str,error_match", [
-        ("invalid-namespace:user", "Invalid WebSocketEventSource"),
-        ("invalid-format", "Invalid WebSocketEventSource"),
-        ("platform-ws:", "Invalid WebSocketEventSource"),
-    ])
+    @pytest.mark.parametrize(
+        "invalid_str,error_match",
+        [
+            ("invalid-namespace:user", "Invalid WebSocketEventSource"),
+            ("invalid-format", "Invalid WebSocketEventSource"),
+            ("platform-ws:", "Invalid WebSocketEventSource"),
+        ],
+    )
     def test_from_string_rejects_invalid(self, invalid_str, error_match):
         """from_string should reject invalid formats."""
         with pytest.raises(ValueError, match=error_match):

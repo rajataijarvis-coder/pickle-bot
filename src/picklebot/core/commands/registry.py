@@ -1,7 +1,6 @@
 # src/picklebot/core/commands/registry.py
 """Command registry for managing slash commands."""
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from picklebot.core.commands.base import Command

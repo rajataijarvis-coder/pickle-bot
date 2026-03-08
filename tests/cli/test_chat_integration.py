@@ -3,7 +3,6 @@
 import asyncio
 import time
 
-import pytest
 
 from picklebot.cli.chat import ChatLoop
 from picklebot.core.events import InboundEvent, OutboundEvent, CliEventSource

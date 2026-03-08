@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 
 from picklebot.core.context import SharedContext
 from picklebot.server.server import Server

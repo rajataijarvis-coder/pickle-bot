@@ -1,6 +1,5 @@
 """Tests for post_message tool factory."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
