@@ -154,7 +154,6 @@ class Event:
     """
 
     session_id: str
-    agent_id: str
     source: EventSource  # Changed from str to typed EventSource
     content: str
     timestamp: float = field(default_factory=time.time)

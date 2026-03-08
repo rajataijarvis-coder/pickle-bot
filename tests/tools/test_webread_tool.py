@@ -1,6 +1,5 @@
 """Tests for webread tool."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from picklebot.tools.webread_tool import create_webread_tool

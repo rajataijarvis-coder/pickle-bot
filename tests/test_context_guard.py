@@ -16,6 +16,7 @@ class TestContextGuard:
         guard = ContextGuard(shared_context=None, token_threshold=1000)
         assert guard.token_threshold == 1000
 
+
 class TestMessageSerialization:
     def test_serialize_messages_for_summary(self):
         """Serialize messages to plain text for summarization."""

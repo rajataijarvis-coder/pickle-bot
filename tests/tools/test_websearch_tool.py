@@ -1,6 +1,5 @@
 """Tests for websearch tool."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from picklebot.tools.websearch_tool import create_websearch_tool

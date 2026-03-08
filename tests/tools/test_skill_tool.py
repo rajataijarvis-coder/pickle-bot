@@ -1,6 +1,5 @@
 """Tests for skill tool factory."""
 
-import pytest
 from unittest.mock import MagicMock
 
 from picklebot.core.skill_loader import SkillLoader

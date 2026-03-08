@@ -24,13 +24,11 @@ from picklebot.core.events import (
 def make_inbound_event(
     content: str = "Test",
     session_id: str | None = None,
-    agent_id: str = "test-agent",
     retry_count: int = 0,
 ) -> InboundEvent:
     """Helper to create an InboundEvent for testing."""
     return InboundEvent(
         session_id=session_id or str(uuid.uuid4()),
-        agent_id=agent_id,
         source=TelegramEventSource("1", "1"),
         content=content,
         timestamp=time.time(),
@@ -41,14 +39,12 @@ def make_inbound_event(
 def make_dispatch_event(
     content: str = "Test",
     session_id: str | None = None,
-    agent_id: str = "test-agent",
     retry_count: int = 0,
     parent_session_id: str = "parent-session-123",
 ) -> DispatchEvent:
     """Helper to create a DispatchEvent for testing."""
     return DispatchEvent(
         session_id=session_id or str(uuid.uuid4()),
-        agent_id=agent_id,
         source="agent:caller",
         content=content,
         timestamp=time.time(),
@@ -67,7 +63,7 @@ async def test_agent_worker_processes_event(test_context, tmp_path):
 
     router = AgentWorker(test_context)
 
-    event = make_inbound_event(content="Say hello", agent_id="test-agent")
+    event = make_inbound_event(content="Say hello")
     await router.dispatch_event(event)
 
     await asyncio.sleep(0.5)
@@ -75,6 +71,15 @@ async def test_agent_worker_processes_event(test_context, tmp_path):
 
 async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
     """AgentWorker publishes RESULT with error when agent doesn't exist."""
+    from picklebot.core.events import AgentEventSource
+
+    # Create a session with a nonexistent agent directly in history store
+    test_context.history_store.create_session(
+        agent_id="nonexistent",
+        session_id="test-job-id",
+        source=AgentEventSource("caller"),
+    )
+
     router = AgentWorker(test_context)
 
     # Track RESULT events
@@ -89,7 +94,7 @@ async def test_agent_router_publishes_error_for_nonexistent_agent(test_context):
     eventbus_task = test_context.eventbus.start()
 
     try:
-        event = make_dispatch_event(agent_id="nonexistent", session_id="test-job-id")
+        event = make_dispatch_event(session_id="test-job-id")
         await router.dispatch_event(event)
 
         # Wait for async error result to be published
@@ -116,7 +121,7 @@ async def test_exec_session_requeues_on_transient_error(test_context, tmp_path):
 
     agent_def = test_context.agent_loader.load("test-agent")
 
-    event = make_inbound_event(content="Test", agent_id="test-agent")
+    event = make_inbound_event(content="Test")
 
     # Track inbound events for retry
     inbound_events: list[InboundEvent] = []
@@ -160,9 +165,7 @@ async def test_exec_session_recovers_missing_session(test_context, tmp_path):
     agent_def = test_context.agent_loader.load("test-agent")
 
     nonexistent_session_id = "nonexistent-session-uuid"
-    event = make_inbound_event(
-        content="Test", session_id=nonexistent_session_id, agent_id="test-agent"
-    )
+    event = make_inbound_event(content="Test", session_id=nonexistent_session_id)
 
     router = AgentWorker(test_context)
     await router.exec_session(event, agent_def)
@@ -181,7 +184,7 @@ async def test_exec_session_runs_session(test_context, tmp_path):
 
     agent_def = test_context.agent_loader.load("test-agent")
 
-    event = make_inbound_event(content="Say hello", agent_id="test-agent")
+    event = make_inbound_event(content="Say hello")
 
     router = AgentWorker(test_context)
     await router.exec_session(event, agent_def)
@@ -193,7 +196,7 @@ async def test_exec_session_respects_semaphore(test_context, tmp_path):
 
     agent_def = test_context.agent_loader.load("test-agent")
 
-    event = make_inbound_event(content="Test", agent_id="test-agent")
+    event = make_inbound_event(content="Test")
 
     router = AgentWorker(test_context)
     sem = router._get_or_create_semaphore(agent_def)
@@ -234,8 +237,8 @@ async def test_agent_router_creates_semaphore_per_agent(test_context, tmp_path):
     # Initially no semaphores
     assert len(router._semaphores) == 0
 
-    _event_a = make_inbound_event(content="Test A", agent_id="agent-a")
-    _event_b = make_inbound_event(content="Test B", agent_id="agent-b")
+    _event_a = make_inbound_event(content="Test A")
+    _event_b = make_inbound_event(content="Test B")
 
     # Get semaphores directly to verify they're created correctly
     agent_def_a = test_context.agent_loader.load("agent-a")
@@ -266,8 +269,8 @@ async def test_agent_router_concurrent_agents_dont_block(test_context, tmp_path)
 
     router = AgentWorker(test_context)
 
-    event_a = make_inbound_event(content="Test A", agent_id="agent-a")
-    event_b = make_inbound_event(content="Test B", agent_id="agent-b")
+    event_a = make_inbound_event(content="Test A")
+    event_b = make_inbound_event(content="Test B")
 
     await router.dispatch_event(event_a)
     await router.dispatch_event(event_b)
@@ -315,7 +318,6 @@ async def test_exec_session_publishes_result_on_success(test_context, tmp_path):
 
     event = make_dispatch_event(
         content="hello",
-        agent_id="test-agent",
         session_id="test-job-123",
     )
 
@@ -367,7 +369,7 @@ async def test_exec_session_requeues_on_first_failure(test_context, tmp_path):
 
     agent_def = test_context.agent_loader.load("test-agent")
 
-    event = make_inbound_event(content="hello", agent_id="test-agent", retry_count=0)
+    event = make_inbound_event(content="hello", retry_count=0)
 
     # Track inbound events for retry
     inbound_events: list[InboundEvent] = []
@@ -415,7 +417,6 @@ async def test_exec_session_publishes_result_with_error_after_max_retries(
 
     event = make_dispatch_event(
         content="hello",
-        agent_id="test-agent",
         retry_count=MAX_RETRIES,
         session_id="job-456",
     )
@@ -477,7 +478,6 @@ async def test_agent_dispatcher_handles_inbound_event(test_context):
     event = make_inbound_event(
         content="Hello world",
         session_id="test-session",
-        agent_id="test-agent",
     )
 
     await router.dispatch_event(event)
@@ -503,7 +503,6 @@ async def test_agent_dispatcher_handles_dispatch_event(test_context):
 
     event = DispatchEvent(
         session_id="job-session",
-        agent_id="test-agent",
         source="agent:caller",
         content="Run task",
         timestamp=time.time(),
@@ -516,7 +515,6 @@ async def test_agent_dispatcher_handles_dispatch_event(test_context):
     dispatched = dispatched_events[0]
     assert isinstance(dispatched, DispatchEvent)
     assert dispatched.session_id == "job-session"
-    assert dispatched.agent_id == "test-agent"
     assert dispatched.content == "Run task"
 
 
@@ -537,7 +535,6 @@ async def test_agent_worker_dispatches_command(test_context, tmp_path):
 
     event = InboundEvent(
         session_id="test-session",
-        agent_id="test-agent",
         source=CliEventSource(),
         content="/help",
         timestamp=time.time(),
@@ -584,7 +581,6 @@ async def test_command_skips_agent_chat(test_context, tmp_path):
 
     event = InboundEvent(
         session_id="test",
-        agent_id="test-agent",
         source=CliEventSource(),
         content="/help",
         timestamp=time.time(),
@@ -604,3 +600,89 @@ async def test_command_skips_agent_chat(test_context, tmp_path):
 
         # Verify chat was NOT called
         mock_session.chat.assert_not_called()
+
+
+# ============================================================================
+# Tests for agent resolution from session
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_dispatch_event_resolves_agent_from_session(test_context, tmp_path):
+    """AgentWorker should get agent_id from session, not event."""
+    from picklebot.core.events import InboundEvent, CliEventSource
+    from picklebot.core.agent import Agent
+    from picklebot.server.agent_worker import AgentWorker
+
+    # Create a 'pickle' agent
+    create_test_agent(tmp_path, agent_id="pickle")
+
+    # Create a session with 'pickle' agent
+    source = CliEventSource()
+    agent_def = test_context.agent_loader.load("pickle")
+    agent = Agent(agent_def, test_context)
+    session = agent.new_session(source)
+
+    # Create event WITHOUT agent_id field
+    event = InboundEvent(
+        session_id=session.session_id,
+        source=source,
+        content="test message",
+    )
+
+    worker = AgentWorker(test_context)
+
+    # Mock the agent loader to track calls
+    with patch.object(
+        test_context.agent_loader, "load", wraps=test_context.agent_loader.load
+    ) as mock_load:
+        # This should work - agent_id comes from session
+        await worker.dispatch_event(event)
+
+        # Give async task time to complete
+        await asyncio.sleep(0.1)
+
+        # Verify 'pickle' agent was loaded (from session, not event)
+        mock_load.assert_called_once_with("pickle")
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_on_routing_change(test_context, tmp_path):
+    """When routing changes, existing session should keep original agent."""
+    from picklebot.core.events import InboundEvent, CliEventSource
+    from picklebot.core.agent import Agent
+    from picklebot.server.agent_worker import AgentWorker
+
+    # Create both agents
+    create_test_agent(tmp_path, agent_id="pickle")
+    create_test_agent(tmp_path, agent_id="cookie")
+
+    # Create session with 'pickle' agent
+    source = CliEventSource()
+    agent_def = test_context.agent_loader.load("pickle")
+    agent = Agent(agent_def, test_context)
+    session = agent.new_session(source)
+
+    # Change default routing to 'cookie'
+    test_context.config.default_agent = "cookie"
+
+    # Send new message to existing session
+    event = InboundEvent(
+        session_id=session.session_id,
+        source=source,
+        content="new message",
+    )
+
+    worker = AgentWorker(test_context)
+
+    # Mock the agent loader to track calls
+    with patch.object(
+        test_context.agent_loader, "load", wraps=test_context.agent_loader.load
+    ) as mock_load:
+        await worker.dispatch_event(event)
+
+        # Give async task time to complete
+        await asyncio.sleep(0.1)
+
+        # Should still use 'pickle' (from session), not 'cookie' (from routing)
+        mock_load.assert_called_once_with("pickle")

@@ -83,7 +83,6 @@ class CronWorker(Worker):
 
             event = DispatchEvent(
                 session_id=session.session_id,
-                agent_id=cron_def.agent,
                 source=CronEventSource(cron_id=cron_def.id),
                 content=cron_def.prompt,
             )

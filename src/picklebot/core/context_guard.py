@@ -34,7 +34,9 @@ class ContextGuard:
         """
         if not state.messages:
             return 0
-        return token_counter(model=state.agent.agent_def.llm.model, messages=state.build_messages())
+        return token_counter(
+            model=state.agent.agent_def.llm.model, messages=state.build_messages()
+        )
 
     async def check_and_compact(
         self,

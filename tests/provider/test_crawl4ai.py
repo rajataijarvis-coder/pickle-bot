@@ -1,6 +1,5 @@
 """Tests for Crawl4AIProvider."""
 
-import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from picklebot.provider.web_read.crawl4ai import Crawl4AIProvider

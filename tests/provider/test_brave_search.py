@@ -1,6 +1,5 @@
 """Tests for BraveSearchProvider."""
 
-import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from picklebot.provider.web_search.brave import BraveSearchProvider

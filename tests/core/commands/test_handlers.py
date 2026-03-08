@@ -21,6 +21,7 @@ from picklebot.utils.def_loader import DefNotFoundError
 from picklebot.core.agent_loader import AgentDef
 from picklebot.utils.config import LLMConfig
 
+
 @pytest.fixture
 def mock_session():
     """Create a mock AgentSession for testing with all required properties."""
@@ -85,7 +86,6 @@ class TestCommandExecute:
         cmd = HelpCommand()
         result = await cmd.execute("", mock_session)
         assert "**Available Commands:**" in result
-
 
     async def test_agent_command_list_with_session(self, mock_session, mock_context):
         """Test agent command lists agents."""

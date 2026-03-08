@@ -2,7 +2,6 @@
 
 import asyncio
 
-import pytest
 
 from picklebot.server.server import Server
 

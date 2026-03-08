@@ -191,7 +191,6 @@ def test_get_or_create_session_id_cache_hit(mock_context):
     # Setup
     routing = RoutingTable(mock_context)
     source = TelegramEventSource(user_id="123", chat_id="456")
-    agent_id = "test-agent"
     existing_session_id = "existing-session-789"
 
     # Ensure agent_loader is mocked
@@ -201,7 +200,7 @@ def test_get_or_create_session_id_cache_hit(mock_context):
     mock_context.config.sources = {str(source): {"session_id": existing_session_id}}
 
     # Execute
-    result = routing.get_or_create_session_id(source, agent_id)
+    result = routing.get_or_create_session_id(source)
 
     # Verify
     assert result == existing_session_id
@@ -218,11 +217,11 @@ def test_get_or_create_session_id_creates_new_session(mock_context):
     # Setup
     routing = RoutingTable(mock_context)
     source = TelegramEventSource(user_id="123", chat_id="456")
-    agent_id = "test-agent"
     new_session_id = "new-session-789"
 
     # Ensure cache is empty (cache-miss scenario)
     mock_context.config.sources = {}
+    mock_context.config.default_agent = "test-agent"
 
     # Mock agent creation
     mock_agent_def = MagicMock()
@@ -239,11 +238,12 @@ def test_get_or_create_session_id_creates_new_session(mock_context):
         "picklebot.core.routing.Agent", return_value=mock_agent
     ) as mock_agent_class:
         # Execute
-        result = routing.get_or_create_session_id(source, agent_id)
+        result = routing.get_or_create_session_id(source)
 
         # Verify
         assert result == new_session_id
-        mock_context.agent_loader.load.assert_called_once_with(agent_id)
+        # Agent ID should be resolved from routing (default_agent)
+        mock_context.agent_loader.load.assert_called_once_with("test-agent")
         mock_agent_class.assert_called_once_with(mock_agent_def, mock_context)
         mock_agent.new_session.assert_called_once_with(source)
 
@@ -263,10 +263,10 @@ def test_get_or_create_session_id_propagates_agent_not_found(mock_context):
     # Setup
     routing = RoutingTable(mock_context)
     source = TelegramEventSource(user_id="123", chat_id="456")
-    agent_id = "nonexistent-agent"
 
     # Ensure cache is empty (cache-miss scenario)
     mock_context.config.sources = {}
+    mock_context.config.default_agent = "nonexistent-agent"
 
     # Mock agent loader to raise exception
     mock_context.agent_loader = MagicMock()
@@ -274,7 +274,7 @@ def test_get_or_create_session_id_propagates_agent_not_found(mock_context):
 
     # Execute & Verify
     with pytest.raises(FileNotFoundError, match="Agent not found"):
-        routing.get_or_create_session_id(source, agent_id)
+        routing.get_or_create_session_id(source)
 
 
 # Test add_runtime_binding and clear_session_cache methods
@@ -303,7 +303,7 @@ def test_add_runtime_binding(routing_table, mock_context):
     # Verify binding added
     mock_context.config.set_runtime.assert_called_once_with(
         "routing.bindings",
-        [{"agent": "cookie", "value": "platform-telegram:user_123:chat_456"}]
+        [{"agent": "cookie", "value": "platform-telegram:user_123:chat_456"}],
     )
 
 
@@ -322,8 +322,8 @@ def test_add_runtime_binding_appends_existing(routing_table, mock_context):
         "routing.bindings",
         [
             {"agent": "pickle", "value": "platform-cli:.*"},
-            {"agent": "cookie", "value": "platform-telegram:user_123:chat_456"}
-        ]
+            {"agent": "cookie", "value": "platform-telegram:user_123:chat_456"},
+        ],
     )
 
 
@@ -338,9 +338,7 @@ def test_clear_session_cache(routing_table, mock_context):
 
     # Verify source removed from dict and persisted
     assert source_str not in mock_context.config.sources
-    mock_context.config.set_runtime.assert_called_once_with(
-        "sources", {}
-    )
+    mock_context.config.set_runtime.assert_called_once_with("sources", {})
 
 
 def test_clear_session_cache_nonexistent(routing_table, mock_context):
@@ -353,3 +351,87 @@ def test_clear_session_cache_nonexistent(routing_table, mock_context):
 
     # Verify still empty
     assert len(mock_context.config.sources) == 0
+
+
+def test_get_or_create_session_id_no_agent_id_param(routing_table, mock_context):
+    """get_or_create_session_id should not require agent_id parameter."""
+    from picklebot.core.events import CliEventSource
+    from unittest.mock import MagicMock
+
+    source = CliEventSource()
+
+    # Mock agent creation
+    mock_agent_def = MagicMock()
+    mock_context.agent_loader.load.return_value = mock_agent_def
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-123"
+
+    mock_agent = MagicMock()
+    mock_agent.new_session.return_value = mock_session
+
+    # Mock Agent constructor
+    with patch("picklebot.core.routing.Agent", return_value=mock_agent):
+        # Should work without agent_id parameter
+        session_id = routing_table.get_or_create_session_id(source)
+
+        assert session_id is not None
+        assert isinstance(session_id, str)
+        assert session_id == "test-session-123"
+
+
+def test_get_or_create_session_id_resolves_agent_for_new_session(
+    routing_table, mock_context
+):
+    """For new sessions, should resolve agent from routing table."""
+    from picklebot.core.events import CliEventSource
+    from unittest.mock import MagicMock
+
+    source = CliEventSource()
+
+    # Mock routing to return 'cookie' agent
+    mock_context.config.routing = {"bindings": []}
+    mock_context.config.default_agent = "cookie"
+
+    # Mock agent creation
+    mock_agent_def = MagicMock()
+    mock_context.agent_loader.load.return_value = mock_agent_def
+
+    mock_session = MagicMock()
+    mock_session.session_id = "new-session-456"
+
+    mock_agent = MagicMock()
+    mock_agent.new_session.return_value = mock_session
+
+    # Mock Agent constructor
+    with patch("picklebot.core.routing.Agent", return_value=mock_agent):
+        session_id = routing_table.get_or_create_session_id(source)
+
+        # Verify it loaded the 'cookie' agent (from default_agent)
+        mock_context.agent_loader.load.assert_called_once_with("cookie")
+        assert session_id == "new-session-456"
+
+
+def test_get_or_create_session_id_returns_cached_for_existing(
+    routing_table, mock_context
+):
+    """For existing sessions, should return cached session_id."""
+    from picklebot.core.events import CliEventSource
+
+    source = CliEventSource()
+    source_str = str(source)
+
+    # Pre-cache a session
+    existing_session_id = "existing-session-789"
+    mock_context.config.sources = {source_str: {"session_id": existing_session_id}}
+
+    # Now change routing to different agent
+    mock_context.config.default_agent = "cookie"
+
+    # Should return existing session without calling agent_loader
+    returned_session_id = routing_table.get_or_create_session_id(source)
+
+    assert returned_session_id == existing_session_id
+
+    # Verify agent_loader was NOT called (cache hit)
+    mock_context.agent_loader.load.assert_not_called()
