@@ -17,9 +17,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Alias for backwards compatibility
-SkillNotFoundError = DefNotFoundError
-
 
 class SkillDef(BaseModel):
     """Loaded skill definition."""
@@ -77,7 +74,7 @@ class SkillLoader:
             SkillDef with full content
 
         Raises:
-            SkillNotFoundError: If skill doesn't exist
+            DefNotFoundError: If skill doesn't exist
         """
         # Use discover_skills which now returns full SkillDef objects
         skills = self.discover_skills()

@@ -103,7 +103,10 @@ class ContextGuard:
                         f"[Truncated - original size: {original_size} chars]"
                     )
 
-                    msg = cast(ChatCompletionToolMessageParam, {**msg, "content": truncated_content})
+                    msg = cast(
+                        ChatCompletionToolMessageParam,
+                        {**msg, "content": truncated_content},
+                    )
 
             result.append(msg)
         return result

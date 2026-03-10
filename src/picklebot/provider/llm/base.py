@@ -51,12 +51,14 @@ class LLMProvider(ABC):
         model: str,
         api_key: str,
         api_base: Optional[str] = None,
-        **kwargs: Any,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
     ):
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
-        self._settings = kwargs
+        self.temperature = temperature
+        self.max_tokens = max_tokens
 
     def __init_subclass__(cls):
         for c_name in cls.provider_config_name:
@@ -92,6 +94,8 @@ class LLMProvider(ABC):
             model=config.model,
             api_key=config.api_key,
             api_base=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
         )
 
     async def chat(
@@ -110,6 +114,8 @@ class LLMProvider(ABC):
             "model": self.model,
             "messages": messages,
             "api_key": self.api_key,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
         }
 
         if self.api_base:

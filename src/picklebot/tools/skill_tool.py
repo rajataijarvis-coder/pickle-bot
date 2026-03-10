@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from picklebot.tools.base import tool
 
 if TYPE_CHECKING:
-    from picklebot.core.skill_loader import SkillLoader
     from picklebot.core.agent import AgentSession
+    from picklebot.core.skill_loader import SkillLoader
 
 
 def create_skill_tool(skill_loader: "SkillLoader"):
