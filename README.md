@@ -23,9 +23,9 @@ uv sync
 ## Quick Start
 
 ```bash
-picklebot init      # First run: meet your new companion
-picklebot chat      # Start chatting
-picklebot server    # Run background tasks (crons, Telegram, Discord)
+uv run pickle-bot init      # First run: meet your new companion
+uv run pickle-bot chat      # Start chatting
+uv run pickle-bot server    # Run background tasks (crons, Telegram, Discord)
 ```
 
 The first run guides you through setup. Pick your LLM, configure your agent, and you're ready.

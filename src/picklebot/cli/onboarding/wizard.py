@@ -1,6 +1,7 @@
 # src/picklebot/cli/onboarding/wizard.py
 """Onboarding wizard orchestrator."""
 
+from importlib.resources import files
 from pathlib import Path
 
 from rich.console import Console
@@ -17,12 +18,20 @@ from picklebot.cli.onboarding.steps import (
 )
 
 
+def _get_default_workspace() -> Path:
+    """Get default workspace path, supporting both dev and installed modes."""
+    # Try installed mode first (bundled in package)
+    bundled = Path(str(files("picklebot").joinpath("default_workspace")))
+    if bundled.exists():
+        return bundled
+    # Fall back to development mode (relative to source)
+    return Path(__file__).parent.parent.parent.parent.parent / "default_workspace"
+
+
 class OnboardingWizard:
     """Guides users through initial configuration."""
 
-    DEFAULT_WORKSPACE = (
-        Path(__file__).parent.parent.parent.parent.parent / "default_workspace"
-    )
+    DEFAULT_WORKSPACE = _get_default_workspace()
 
     STEPS: list[type[BaseStep]] = [
         CheckWorkspaceStep,
