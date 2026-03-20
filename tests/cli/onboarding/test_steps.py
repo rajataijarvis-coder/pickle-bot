@@ -365,6 +365,69 @@ class TestCopyDefaultAssetsStep:
             workspace / "agents" / "pickle" / "AGENT.md"
         ).read_text() == "---\nname: Pickle\ndescription: Test agent\n---\n# New Content"
 
+    def test_copies_workspace_files(self, tmp_path: Path):
+        """Copies AGENTS.md and BOOTSTRAP.md to workspace."""
+        console = Console()
+        defaults = tmp_path / "defaults"
+        defaults.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "agents").mkdir()
+        (workspace / "skills").mkdir()
+
+        # Create default workspace files
+        (defaults / "AGENTS.md").write_text("# Agents Guide")
+        (defaults / "BOOTSTRAP.md").write_text("# Bootstrap Guide")
+
+        # Create mock default agent to trigger the step
+        mock_agent = defaults / "agents" / "pickle"
+        mock_agent.mkdir(parents=True)
+        (mock_agent / "AGENT.md").write_text(
+            "---\nname: Pickle\ndescription: Test agent\n---\n# Pickle Agent"
+        )
+
+        step = CopyDefaultAssetsStep(workspace, console, defaults)
+
+        with patch("questionary.checkbox") as mock_checkbox:
+            mock_checkbox.return_value.ask.side_effect = [["pickle"], []]
+            result = step.run({})
+
+        assert result is True
+        assert (workspace / "AGENTS.md").exists()
+        assert (workspace / "BOOTSTRAP.md").exists()
+        assert (workspace / "AGENTS.md").read_text() == "# Agents Guide"
+        assert (workspace / "BOOTSTRAP.md").read_text() == "# Bootstrap Guide"
+
+    def test_skips_missing_workspace_files(self, tmp_path: Path):
+        """Does not fail if AGENTS.md or BOOTSTRAP.md don't exist."""
+        console = Console()
+        defaults = tmp_path / "defaults"
+        defaults.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "agents").mkdir()
+        (workspace / "skills").mkdir()
+
+        # Create only AGENTS.md, not BOOTSTRAP.md
+        (defaults / "AGENTS.md").write_text("# Agents Guide")
+
+        # Create mock default agent to trigger the step
+        mock_agent = defaults / "agents" / "pickle"
+        mock_agent.mkdir(parents=True)
+        (mock_agent / "AGENT.md").write_text(
+            "---\nname: Pickle\ndescription: Test agent\n---\n# Pickle Agent"
+        )
+
+        step = CopyDefaultAssetsStep(workspace, console, defaults)
+
+        with patch("questionary.checkbox") as mock_checkbox:
+            mock_checkbox.return_value.ask.side_effect = [["pickle"], []]
+            result = step.run({})
+
+        assert result is True
+        assert (workspace / "AGENTS.md").exists()
+        assert not (workspace / "BOOTSTRAP.md").exists()
+
 
 class TestConfigureChannelStep:
     """Tests for ConfigureChannelStep."""

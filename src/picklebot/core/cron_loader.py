@@ -73,6 +73,7 @@ class CronLoader:
             config: Config object containing crons_path, workspace, etc.
         """
         self.config = config
+        self.config.crons_path.mkdir(parents=True, exist_ok=True)
 
     def discover_crons(self) -> list[CronDef]:
         """Scan crons directory, return definitions for all valid jobs."""

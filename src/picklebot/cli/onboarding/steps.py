@@ -196,6 +196,13 @@ class CopyDefaultAssetsStep(BaseStep):
         for name in selected_skills:
             self._copy_asset("skills", name)
 
+        # Copy top-level workspace files
+        for filename in ["AGENTS.md", "BOOTSTRAP.md"]:
+            src = self.defaults / filename
+            dst = self.workspace / filename
+            if src.exists():
+                shutil.copy2(src, dst)
+
         return True
 
     def _discover_defaults(
